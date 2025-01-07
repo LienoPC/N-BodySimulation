@@ -1,4 +1,4 @@
-
+#pragma once
 
 __global__ void kernel(float4* gX, float3* gA, float3* gV, int N);
 

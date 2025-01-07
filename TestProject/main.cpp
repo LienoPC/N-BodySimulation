@@ -9,7 +9,6 @@
 #include <string>
 #include <stdio.h>
 #include <algorithm>
-#include "constants.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -323,9 +322,10 @@ int main(void) {
 		cudaMalloc((void**)&d_bodies, size4);
 		cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
 		simulationLoopNoVisual(d_bodies, d_accelerations, d_velocity);
+
+		cudaFree(d_bodies);
 	}
 
-	
 	cudaFree(d_velocity);
 	cudaFree(d_accelerations);
 	cudaFreeHost(bodies);
