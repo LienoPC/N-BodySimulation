@@ -101,7 +101,7 @@ void simulate(cudaGraphicsResource* graphic_res, float3* d_accelerations, float3
 	cudaGraphicsMapResources(1, &graphic_res, 0);
 
 	// Get pointer to bodies
-	cudaGraphicsResourceGetMappedPointer((void**) & d_bodies, &size4, graphic_res);
+	cudaGraphicsResourceGetMappedPointer((void**) &d_bodies, &size4, graphic_res);
 
 	// Level of parallelism is defined, for each block, by P value (max number of thread per block)
 	cudaDeviceProp deviceProp;
