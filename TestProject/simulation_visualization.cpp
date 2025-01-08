@@ -5,6 +5,7 @@
 #include <vector>
 #include <stdio.h>
 #include <algorithm>
+#include "cuda_gl_interop.h"
 #include "constants.h"
 
 
@@ -99,6 +100,7 @@ GLuint compileShader(GLenum type, const char* source) {
     return shader;
 }
 
+
 GLuint createShaderProgram() {
     GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource);
     GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
@@ -124,17 +126,19 @@ GLuint createShaderProgram() {
     return shaderProgram;
 }
 
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
+
 
 void setupOpenGL() {
     glEnable(GL_DEPTH_TEST);   // Enable depth testing
     glPointSize(1.0f);         // Set point size for body representation
 }
 
+
 GLuint createVertexBuffer(float4* bodies, int numBodies) {
-   
     GLuint VBO, VAO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -145,11 +149,8 @@ GLuint createVertexBuffer(float4* bodies, int numBodies) {
     
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
 
-    
     glEnableVertexAttribArray(0);
     glBindVertexArray(0);
-
-
 
     return VBO;
 }
@@ -167,3 +168,56 @@ void renderBodies(GLuint VAO, int numBodies) {
     glBindVertexArray(0);
 }
 
+
+int initVisualization(GLFWwindow** window, float4* hostBodies, cudaGraphicsResource_t* graphicResource, GLuint* VBO) {
+    setupOpenGL();
+    if (!glfwInit()) return EXIT_FAILURE;
+
+    *window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "N-Body Simulation", nullptr, nullptr);
+
+    if (!(*window)) {
+        printf("Failed to create the GLFW window");
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+
+    glfwMakeContextCurrent(*window);
+    glewInit();
+
+    glfwSetFramebufferSizeCallback(*window, framebuffer_size_callback);
+    if (glewInit() != GLEW_OK) {
+        printf("Failed to initialize GLEW");
+        return EXIT_FAILURE;
+    }
+
+    GLuint shaderProgram = createShaderProgram();
+
+    glUseProgram(shaderProgram);
+    /*
+    * // Get the uniform location
+    GLuint projectionLoc = glGetUniformLocation(shaderProgram, "projection");
+    GLuint viewLoc = glGetUniformLocation(shaderProgram, "view");
+    GLuint modelLoc = glGetUniformLocation(shaderProgram, "model");
+    */
+
+    glUniform1f(glGetUniformLocation(shaderProgram, "minWeight"), MIN_W);
+    glUniform1f(glGetUniformLocation(shaderProgram, "maxWeight"), MAX_W);
+    glUniform1f(glGetUniformLocation(shaderProgram, "maxX"), MAX_VIEWX);
+    glUniform1f(glGetUniformLocation(shaderProgram, "maxY"), MAX_VIEWY);
+    glUniform1f(glGetUniformLocation(shaderProgram, "maxZ"), MAX_VIEWZ);
+
+    /*
+    // Pass the matrix to the shader
+    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    */
+
+    // Create OpenGL buffer
+    *VBO = createVertexBuffer(hostBodies, N_BODIES);
+
+    // This allocates device memory to store the graphic resource (the bodies array)
+    cudaGraphicsGLRegisterBuffer(graphicResource, *VBO, cudaGraphicsRegisterFlagsNone);
+
+    return 0;
+}
