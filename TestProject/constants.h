@@ -12,4 +12,4 @@
 #define MAX_VIEWZ 200000.0
 
 #define EPS2 0.002 // Epsilon value
-#define DT 0.001 // Time step
+#define DT 0.1 // Time step
