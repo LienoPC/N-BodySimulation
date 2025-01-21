@@ -170,26 +170,40 @@ void copy_vector_bodies(float4 in[], float4 out[], int N) {
 }
 
 
-int simulationLoopVisual(GLFWwindow *window, cudaGraphicsResource_t graphicResource, GLuint *VBO, float3* d_accel, float3* d_vel) {
+int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResource, GLuint* VBO, float4* bodies, float4* d_accel, float4* d_vel) {
 	// Timing 
 	clock_t t0, t1;
 	double time;
 	int counter = 0;
 
+	size_t size4 = sizeof(float4) * N_BODIES;
+	float4* d_bodies;
+
+	// Map openGL buffer to cuda pointer
+	cudaGraphicsMapResources(1, &graphicResource, 0);
+
+	// Get pointer to bodies
+	cudaGraphicsResourceGetMappedPointer((void**)&d_bodies, &size4, graphicResource);
+	
+	// Move bodies data to device
+	cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
+	
+	cudaGraphicsUnmapResources(1, &graphicResource, 0);
+
 	// Start timing
 	t0 = clock();
 	while (!glfwWindowShouldClose(window)) {
-		if (counter == 1000) {
+		if (counter == 1) {
 			t1 = clock();
 			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
-			printf("1000 calculations take: %f s\n", time);
+			printf("1 calculations take: %f s\n", time);
 			counter = 0;
 			t0 = clock();
 		}
 		counter++;
 
 		try {
-			simulateVisual(graphicResource, d_accel, d_vel, N_BODIES);
+			simulateVisual(graphicResource, d_bodies, d_accel, d_vel, N_BODIES);
 		}
 		catch (const std::exception& e) {
 			std::cerr << e.what() << std::endl;
@@ -283,23 +297,23 @@ int main(void) {
 
 	// Allocating pinned memory
 	cudaMallocHost(&bodies, size4);
-	cudaMallocHost(&velocity, size3);
-	cudaMallocHost(&accelerations,size3);
+	cudaMallocHost(&velocity, size4);
+	cudaMallocHost(&accelerations, size4);
 	
 	fill_with_random4(bodies, N_BODIES);
 	fill_with_zeroes3(velocity, N_BODIES);
 	fill_with_zeroes3(accelerations, N_BODIES);
 
 	// Create space for device copies
-	float3* d_velocity;
-	float3* d_accelerations;
+	float4* d_velocity;
+	float4* d_accelerations;
 
-	cudaMalloc((void**)&d_velocity, size3);
-	cudaMalloc((void**)&d_accelerations, size3);
+	cudaMalloc((void**)&d_velocity, size4);
+	cudaMalloc((void**)&d_accelerations, size4);
 
 	// Copy to device
-	cudaMemcpy(d_velocity, velocity, size3, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_accelerations, accelerations, size3, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_velocity, velocity, size4, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_accelerations, accelerations, size4, cudaMemcpyHostToDevice);
 	
 	// Handle visualization activation
 	if (askForVisualization()) {
@@ -309,7 +323,7 @@ int main(void) {
 
 		// This function allocates device memory for the bodies array using a cuda graphic resource
 		if (initVisualization(&window, bodies, &bodies_positions, &VBO) == 0) {
-			simulationLoopVisual(window, bodies_positions, &VBO, d_accelerations, d_velocity);
+			simulationLoopVisual(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity);
 		}
 
 		glDeleteBuffers(1, &VBO);
@@ -317,13 +331,17 @@ int main(void) {
 		glfwTerminate();
 	}
 	else {
+		/*
 		// Allocate device memory for the bodies array and copy it from host to device
 		float4* d_bodies;
 		cudaMalloc((void**)&d_bodies, size4);
 		cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
 		simulationLoopNoVisual(d_bodies, d_accelerations, d_velocity);
-
 		cudaFree(d_bodies);
+		*/
+		
+
+		
 	}
 
 	cudaFree(d_velocity);

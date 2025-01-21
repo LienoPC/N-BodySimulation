@@ -145,7 +145,8 @@ GLuint createVertexBuffer(float4* bodies, int numBodies) {
 
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float4)*numBodies, bodies, GL_DYNAMIC_DRAW);
+    // Gets better optimization for transferring data to OpenGL
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float4)*numBodies, NULL, GL_DYNAMIC_DRAW);
     
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
 

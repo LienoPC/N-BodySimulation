@@ -8,7 +8,7 @@
 #define __DEBUG__ 1
 #define THREADS_PER_BLOCK 64
 
-__device__ float3 bodyInteractions(float4 bi, float4 bj, float3 ai) {
+__device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 	// Compute r_ij position vector of i from j
 	float3 r_ij;
 	r_ij.x = bj.x - bi.x;
@@ -31,9 +31,12 @@ __device__ float3 bodyInteractions(float4 bi, float4 bj, float3 ai) {
 }
 
 
-__device__ float3 tile_interaction(float4 myBody, float3 accel) {
+__device__ float4 tile_interaction(float4 myBody, float4 accel) {
 	int i;
-	extern __shared__ float4 shBodies[];
+	extern __shared__  __align__(16) float4 shBodies[];
+	
+	// Unrolling loop to increase ILP
+	#pragma unroll
 	for (i = 0; i < blockDim.x; i++) {
 		accel = bodyInteractions(myBody, shBodies[i], accel);
 	}
@@ -41,11 +44,11 @@ __device__ float3 tile_interaction(float4 myBody, float3 accel) {
 }
 
 
-__global__ void kernel(float4* globalX, float3* globalA, float3* globalV, int N) {
-	extern __shared__ float4 shBodies[];
+__global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N) {
+	extern __shared__  __align__(16) float4 shBodies[];
 	float4 myBody, myNewBody; // Position (x, y, z) and weight (w)
-	float3 myNewVel;
-	float3 myNewAccel = { 0.0f, 0.0f, 0.0f };
+	float4 myNewVel;
+	float4 myNewAccel = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 	// We use 1D blocks because each thread in a block computes the interactions between its body and each other body serially,
 	// fetching the descriptions of the other bodies from shared memory after they've been loaded. 
@@ -58,9 +61,8 @@ __global__ void kernel(float4* globalX, float3* globalA, float3* globalV, int N)
 		return;
 	}
 
-	myBody = globalX[tid];
+	myNewBody = globalX[tid];
 	myNewVel = globalV[tid];
-	myNewBody = myBody;
 
 	// Each tile has dimension (blockDim.x * blockDim.x)
 	for (int i = 0, int tile = 0; i < N; i += blockDim.x, tile++) {
@@ -79,7 +81,7 @@ __global__ void kernel(float4* globalX, float3* globalA, float3* globalV, int N)
 
 		// Compute interactions
 		if (idx < N) {
-			myNewAccel = tile_interaction(myBody, myNewAccel);
+			myNewAccel = tile_interaction(myNewBody, myNewAccel);
 		}
 		__syncthreads();
 	}
@@ -112,7 +114,7 @@ __global__ void kernel(float4* globalX, float3* globalA, float3* globalV, int N)
 }
 
 
-void simulateVisual(cudaGraphicsResource* graphic_res, float3* d_accelerations, float3* d_velocity, int N) {
+void simulateVisual(cudaGraphicsResource* graphic_res, float4* bodies, float4* d_accelerations, float4* d_velocity, int N) {
 	size_t size4 = sizeof(float4) * N;
 	float4* d_bodies;
 
@@ -136,6 +138,10 @@ void simulateVisual(cudaGraphicsResource* graphic_res, float3* d_accelerations, 
 	kernel <<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_bodies, d_accelerations, d_velocity, N);
 	cudaDeviceSynchronize();
 
+	// Copy data from CUDA to OpenGL
+	//cudaMemcpy(VBO,(void*) d_bodies, size4, cudaMemcpyDeviceToDevice);
+
+
 	cudaGraphicsUnmapResources(1, &graphic_res, 0);
 
 	/*
@@ -158,6 +164,6 @@ void simulate(float4* d_bodies, float3* d_accelerations, float3* d_velocity, int
 
 	size_t sharedMemSize = sizeof(float4) * threadsPerBlock;
 	// Launch thread computation
-	kernel <<<blocksPerGrid, threadsPerBlock, sharedMemSize >>> (d_bodies, d_accelerations, d_velocity, N);
+	//kernel <<<blocksPerGrid, threadsPerBlock, sharedMemSize >>> (d_bodies, d_accelerations, d_velocity, N);
 	cudaDeviceSynchronize();
 }
