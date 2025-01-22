@@ -92,6 +92,16 @@ void fill_with_zeroes3(float3 v[], int N) {
 	}
 }
 
+void fill_with_zeroes4(float4 v[], int N) {
+
+	for (int i = 0; i < N; i++) {
+		v[i].x = 0;
+		v[i].y = 0;
+		v[i].z = 0;
+		v[i].w = 0;
+	}
+}
+
 
 void fill_with_random4(float4 v[], int N) {
 	for (int i = 0; i < N; i++) {
@@ -196,14 +206,14 @@ int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResou
 		if (counter == 1) {
 			t1 = clock();
 			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
-			printf("1 calculations take: %f s\n", time);
+			//printf("1 calculations take: %f s\n", time);
 			counter = 0;
 			t0 = clock();
 		}
 		counter++;
 
 		try {
-			simulateVisual(graphicResource, d_bodies, d_accel, d_vel, N_BODIES);
+			simulateVisual_embParallel(graphicResource, d_bodies, d_accel, d_vel, N_BODIES);
 		}
 		catch (const std::exception& e) {
 			std::cerr << e.what() << std::endl;
@@ -289,8 +299,8 @@ bool askForVisualization() {
 
 int main(void) {
 	float4* bodies;
-	float3* accelerations;
-	float3* velocity;
+	float4* accelerations;
+	float4* velocity;
 	int size4 = sizeof(float4) * N_BODIES;	
 	int size3 = sizeof(float3) * N_BODIES;
 	bool enableVisualization;
@@ -301,8 +311,8 @@ int main(void) {
 	cudaMallocHost(&accelerations, size4);
 	
 	fill_with_random4(bodies, N_BODIES);
-	fill_with_zeroes3(velocity, N_BODIES);
-	fill_with_zeroes3(accelerations, N_BODIES);
+	fill_with_zeroes4(velocity, N_BODIES);
+	fill_with_zeroes4(accelerations, N_BODIES);
 
 	// Create space for device copies
 	float4* d_velocity;
@@ -331,14 +341,14 @@ int main(void) {
 		glfwTerminate();
 	}
 	else {
-		/*
+		
 		// Allocate device memory for the bodies array and copy it from host to device
 		float4* d_bodies;
 		cudaMalloc((void**)&d_bodies, size4);
 		cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
-		simulationLoopNoVisual(d_bodies, d_accelerations, d_velocity);
+		//simulationLoopNoVisual(d_bodies, d_accelerations, d_velocity);
 		cudaFree(d_bodies);
-		*/
+		
 		
 
 		
