@@ -135,6 +135,9 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	// that then will be reduced and combined row-wise with all other acceleration over the same body
 	int tidX = blockIdx.x * blockDim.x + threadIdx.x; // Defines the body with which the computation should be
 	int tidY = blockIdx.y * blockDim.y + threadIdx.y; // Defines the effective body for which we are computing the interacion and over which will be executed the reduction
+	// Shared memory id
+	int sid = blockDim.x * threadIdx.y + threadIdx.x;
+	
 	if (tidX >= N || tidY >= N) {
 
 		return;
@@ -147,7 +150,7 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	myNewAccel = bodyInteractions(baseBody, otherBody, myNewAccel);
 
 	// Load into shared memory along X dimension
-	shAccel[threadIdx.x] = myNewAccel;
+	shAccel[sid] = myNewAccel;
 
 	// Wait for all threads completion
 	__syncthreads();
@@ -170,7 +173,6 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	*/
 	
 	// Sequential Addressing Reduction
-	int sid = blockDim.x * threadIdx.y + threadIdx.x;
 	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
 		if (threadIdx.x < s) {
 			shAccel[sid].x += shAccel[sid + s].x;
@@ -222,11 +224,9 @@ __global__ void interBlockReduction(float4* globalX, float4* globalA, float4* gl
 }
 
 
-void simulateVisual_embParallel(cudaGraphicsResource* graphic_res, float4* bodies, float4* d_accelerations, float4* d_velocity,int N) {
+void simulateVisual_embParallel(cudaGraphicsResource* graphic_res, float4* bodies, float4* d_accelerations, float4* d_velocity, float4* d_reduceMatrix, int N) {
 	size_t size4 = sizeof(float4) * N;
 	float4* d_bodies;
-	float4* d_reduceMatrix;
-	cudaError err;
 
 
 	// Map openGL buffer to cuda pointer
@@ -251,12 +251,6 @@ void simulateVisual_embParallel(cudaGraphicsResource* graphic_res, float4* bodie
 
 	//printf("\nBlockDim: %d,%d,%d\n", blockDim.x, blockDim.y, blockDim.z);
 	//printf("GridDim: %d,%d,%d\n", gridDim.x, gridDim.y, gridDim.z);
-
-	// Allocate reduction matrix space
-	err = cudaMalloc((void**)&d_reduceMatrix, size4 * blocksPerGrid);
-	if (err != cudaSuccess) {
-		printf("Malloc of reduce matrix failed: %s\n", cudaGetErrorString(err));
-	}
 	// Launch thread computation
 	kernel_emb_parallel << <gridDim, blockDim, sharedMemSize >> > (d_bodies, d_accelerations, d_velocity, d_reduceMatrix, N);
 	cudaDeviceSynchronize();
@@ -273,7 +267,7 @@ void simulateVisual_embParallel(cudaGraphicsResource* graphic_res, float4* bodie
 		//printf("Memcpy DeviceToHost bodies failed: %s\n", cudaGetErrorString(err));
 	}
 	*/
-	cudaFree(d_reduceMatrix);
+	
 }
 
 

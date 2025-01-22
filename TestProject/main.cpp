@@ -12,9 +12,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include "cuda_runtime.h"
 #include <time.h>
 #include <conio.h> // Only available on Windows
+#include <cuda_runtime.h>
 
 /*
 Function that computes interaction between two bodies:
@@ -180,6 +180,61 @@ void copy_vector_bodies(float4 in[], float4 out[], int N) {
 }
 
 
+int simulationLoopVisualEmb(GLFWwindow* window, cudaGraphicsResource_t graphicResource, GLuint* VBO, float4* bodies, float4* d_accel, float4* d_vel, float4* d_reduceMatrix) {
+	// Timing 
+	clock_t t0, t1;
+	double time;
+	int counter = 0;
+
+	size_t size4 = sizeof(float4) * N_BODIES;
+	float4* d_bodies;
+
+	// Map openGL buffer to cuda pointer
+	cudaGraphicsMapResources(1, &graphicResource, 0);
+
+	// Get pointer to bodies
+	cudaGraphicsResourceGetMappedPointer((void**)&d_bodies, &size4, graphicResource);
+
+	// Move bodies data to device
+	cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
+
+	cudaGraphicsUnmapResources(1, &graphicResource, 0);
+
+	// Start timing
+	t0 = clock();
+	while (!glfwWindowShouldClose(window)) {
+		if (counter == 1) {
+			t1 = clock();
+			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
+			printf("1 calculations take: %f s\n", time);
+			counter = 0;
+			t0 = clock();
+		}
+		counter++;
+
+		try {
+			simulateVisual_embParallel(graphicResource, d_bodies, d_accel, d_vel, d_reduceMatrix, N_BODIES);
+		}
+		catch (const std::exception& e) {
+			std::cerr << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		//CPU_compute(bodies, accelerations, velocity, N_BODIES);
+
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// Render bodies
+		renderBodies(*VBO, N_BODIES);
+
+		glfwSwapBuffers(window);
+		glfwPollEvents();
+	}
+
+	return 0;
+}
+
+
 int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResource, GLuint* VBO, float4* bodies, float4* d_accel, float4* d_vel) {
 	// Timing 
 	clock_t t0, t1;
@@ -206,14 +261,14 @@ int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResou
 		if (counter == 1) {
 			t1 = clock();
 			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
-			//printf("1 calculations take: %f s\n", time);
+			printf("1 calculations take: %f s\n", time);
 			counter = 0;
 			t0 = clock();
 		}
 		counter++;
 
 		try {
-			simulateVisual_embParallel(graphicResource, d_bodies, d_accel, d_vel, N_BODIES);
+			simulateVisual(graphicResource, d_bodies, d_accel, d_vel, N_BODIES);
 		}
 		catch (const std::exception& e) {
 			std::cerr << e.what() << std::endl;
@@ -301,6 +356,8 @@ int main(void) {
 	float4* bodies;
 	float4* accelerations;
 	float4* velocity;
+	float4* d_reduceMatrix;
+
 	int size4 = sizeof(float4) * N_BODIES;	
 	int size3 = sizeof(float3) * N_BODIES;
 	bool enableVisualization;
@@ -325,6 +382,17 @@ int main(void) {
 	cudaMemcpy(d_velocity, velocity, size4, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_accelerations, accelerations, size4, cudaMemcpyHostToDevice);
 	
+	cudaDeviceProp deviceProp;
+	cudaGetDeviceProperties(&deviceProp, 0);
+
+	int threadsPerBlock = 32;
+	if (threadsPerBlock > deviceProp.maxThreadsPerBlock)
+		throw std::runtime_error("threadsPerBlock is greater than the device maximum threads per block");
+
+	int blocksPerGrid = (N_BODIES + threadsPerBlock - 1) / threadsPerBlock;
+
+	cudaMalloc((void**)&d_reduceMatrix, size4 * blocksPerGrid);
+
 	// Handle visualization activation
 	if (askForVisualization()) {
 		GLuint VBO;
@@ -333,7 +401,7 @@ int main(void) {
 
 		// This function allocates device memory for the bodies array using a cuda graphic resource
 		if (initVisualization(&window, bodies, &bodies_positions, &VBO) == 0) {
-			simulationLoopVisual(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity);
+			simulationLoopVisualEmb(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity, d_reduceMatrix);
 		}
 
 		glDeleteBuffers(1, &VBO);
@@ -356,6 +424,7 @@ int main(void) {
 
 	cudaFree(d_velocity);
 	cudaFree(d_accelerations);
+	cudaFree(d_reduceMatrix);
 	cudaFreeHost(bodies);
 	cudaFreeHost(velocity);
 	cudaFreeHost(accelerations);
