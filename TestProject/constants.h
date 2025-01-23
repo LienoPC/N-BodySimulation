@@ -1,6 +1,6 @@
 #pragma once
 
-#define N_BODIES 32784
+#define N_BODIES 16384
 #define MAX_X 100000.0
 #define MAX_Y 100000.0
 #define MAX_Z 100000.0

@@ -125,7 +125,7 @@ __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N)
 
 // Embarassingly parallel kernel version
 __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* globalV, float4* reduceMatrix, int N) {
-	extern __shared__  __align__(16) float4 shAccel[];
+	extern __shared__  __align__(16) float4 shMem[];
 	float4 baseBody; // Position (x, y, z) and weight (w)
 	float4 otherBody;
 	float4 myNewVel;
@@ -142,23 +142,32 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 
 		return;
 	}
-	baseBody = globalX[tidY];
-	otherBody = globalX[tidX];
+	// In the first row of the shared memory I load every x base body
+	// for a lenght of "THREADS_PER_BLOCK" bodies
+	if (threadIdx.x == 0) {
+		shMem[threadIdx.y] = globalX[tidY];
+	}
+	// On the second row of the shared memory I load every y base body
+	// for a lenght of "THREADS_PER_BLOCK" bodies
+	if (threadIdx.x == 0) {
+		shMem[blockDim.y + threadIdx.x] = globalX[tidX];
+	}
+	__syncthreads();
+	baseBody = shMem[threadIdx.y];
+	otherBody = shMem[blockDim.y + threadIdx.x];
 	myNewVel = globalV[tidY];
-
+	
 	// Compute the single interaction
 	myNewAccel = bodyInteractions(baseBody, otherBody, myNewAccel);
 
 	// Load into shared memory along X dimension
-	shAccel[sid] = myNewAccel;
+	shMem[sid] = myNewAccel;
 
 	// Wait for all threads completion
 	__syncthreads();
 
 	// Reduce and update body velocity and acceleration
 	// usign integration step
-	// Reduction is performed
-
 	/*
 	// Interleaved Addressing Reduction
 	for (unsigned int s = 1; s < blockDim.x; s *= 2) {
@@ -175,16 +184,16 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	// Sequential Addressing Reduction
 	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
 		if (threadIdx.x < s) {
-			shAccel[sid].x += shAccel[sid + s].x;
-			shAccel[sid].y += shAccel[sid + s].y;
-			shAccel[sid].z += shAccel[sid + s].z;
+			shMem[sid].x += shMem[sid + s].x;
+			shMem[sid].y += shMem[sid + s].y;
+			shMem[sid].z += shMem[sid + s].z;
 		}
 		__syncthreads();
 	}
 	// At this point, we have the sum of all blocks X-wise computed interactions
 	// We need now to sum all the blocks over the X-axis for each body
 	if (threadIdx.x == 0) {
-		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shAccel[sid];
+		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shMem[sid];
 		
 	}
 	
