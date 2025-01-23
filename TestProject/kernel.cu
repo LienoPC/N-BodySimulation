@@ -128,7 +128,6 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	extern __shared__  __align__(16) float4 shMem[];
 	float4 baseBody; // Position (x, y, z) and weight (w)
 	float4 otherBody;
-	float4 myNewVel;
 	float4 myNewAccel = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 	// We are working in this algorithm in an NxN grid of threads, in which every thread computes one single interaction
@@ -155,7 +154,6 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	__syncthreads();
 	baseBody = shMem[threadIdx.y];
 	otherBody = shMem[blockDim.y + threadIdx.x];
-	myNewVel = globalV[tidY];
 	
 	// Compute the single interaction
 	myNewAccel = bodyInteractions(baseBody, otherBody, myNewAccel);
@@ -194,7 +192,6 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	// We need now to sum all the blocks over the X-axis for each body
 	if (threadIdx.x == 0) {
 		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shMem[sid];
-		
 	}
 	
 
