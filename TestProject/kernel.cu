@@ -8,15 +8,6 @@
 #define __DEBUG__ 1
 #define THREADS_PER_BLOCK 32
 
-#define CUDA_CALL(call) do {                                 \
-    cudaError_t err = call;                                  \
-    if (err != cudaSuccess) {                                \
-        fprintf(stderr, "CUDA error in %s (%s:%d): %s\n",    \
-                #call, __FILE__, __LINE__, cudaGetErrorString(err)); \
-        exit(EXIT_FAILURE);                                  \
-    }                                                        \
-} while (0)
-
 __device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 	// Compute r_ij position vector of i from j
 	float3 r_ij;
@@ -136,24 +127,13 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	int tidY = blockIdx.y * blockDim.y + threadIdx.y; // Defines the effective body for which we are computing the interacion and over which will be executed the reduction
 	// Shared memory id
 	int sid = blockDim.x * threadIdx.y + threadIdx.x;
-	
+	int tid = threadIdx.x;
 	if (tidX >= N || tidY >= N) {
 
 		return;
 	}
-	// In the first row of the shared memory I load every x base body
-	// for a lenght of "THREADS_PER_BLOCK" bodies
-	if (threadIdx.x == 0) {
-		shMem[threadIdx.y] = globalX[tidY];
-	}
-	// On the second row of the shared memory I load every y base body
-	// for a lenght of "THREADS_PER_BLOCK" bodies
-	if (threadIdx.x == 0) {
-		shMem[blockDim.y + threadIdx.x] = globalX[tidX];
-	}
-	__syncthreads();
-	baseBody = shMem[threadIdx.y];
-	otherBody = shMem[blockDim.y + threadIdx.x];
+	baseBody = globalX[tidY];
+	otherBody = globalX[tidX];
 	
 	// Compute the single interaction
 	myNewAccel = bodyInteractions(baseBody, otherBody, myNewAccel);
@@ -178,16 +158,41 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 		__syncthreads();
 	}
 	*/
-	
+	/*
 	// Sequential Addressing Reduction
 	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
-		if (threadIdx.x < s) {
+		if (tid < s) {
 			shMem[sid].x += shMem[sid + s].x;
 			shMem[sid].y += shMem[sid + s].y;
 			shMem[sid].z += shMem[sid + s].z;
 		}
 		__syncthreads();
 	}
+	*/
+	
+	// Loop unrolling, knowing that we are using block of 32 threads
+	shMem[sid].x += shMem[sid + 16].x;
+	shMem[sid].y += shMem[sid + 16].y;
+	shMem[sid].z += shMem[sid + 16].z;
+
+	shMem[sid].x += shMem[sid + 8].x;
+	shMem[sid].y += shMem[sid + 8].y;
+	shMem[sid].z += shMem[sid + 8].z;
+
+	shMem[sid].x += shMem[sid + 4].x;
+	shMem[sid].y += shMem[sid + 4].y;
+	shMem[sid].z += shMem[sid + 4].z;
+
+	shMem[sid].x += shMem[sid + 2].x;
+	shMem[sid].y += shMem[sid + 2].y;
+	shMem[sid].z += shMem[sid + 2].z;
+
+	shMem[sid].x += shMem[sid + 1].x;
+	shMem[sid].y += shMem[sid + 1].y;
+	shMem[sid].z += shMem[sid + 1].z;
+
+	__syncthreads();
+
 	// At this point, we have the sum of all blocks X-wise computed interactions
 	// We need now to sum all the blocks over the X-axis for each body
 	if (threadIdx.x == 0) {
@@ -196,6 +201,7 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	
 
 }
+
 
 __global__ void interBlockReduction(float4* globalX, float4* globalA, float4* globalV, float4* reduceMatrix, int N, int numBlocks) {
 	int tidY = blockIdx.x * blockDim.x + threadIdx.x; // Each thread handles one body
