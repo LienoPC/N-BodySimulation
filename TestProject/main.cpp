@@ -127,6 +127,25 @@ void print_float3(float3 v[], int N) {
 	}
 }
 
+void print_device_prop() {
+	cudaDeviceProp deviceProp;
+	cudaGetDeviceProperties(&deviceProp, 0);
+
+	printf("== Device Properties ==\n");
+	printf("Name: %s\n", deviceProp.name);
+	printf("Total global memory: %llu\n", deviceProp.totalGlobalMem);
+	printf("Total shared memory: %llu\n", (size_t) deviceProp.multiProcessorCount * deviceProp.sharedMemPerMultiprocessor);
+	printf("Shared memory per multiprocessor: %llu\n", deviceProp.sharedMemPerMultiprocessor);
+	printf("Shared memory per block: %llu\n", deviceProp.sharedMemPerBlock);
+	printf("Multi processor count: %d\n", deviceProp.multiProcessorCount);
+	printf("Max (parallel) blocks per multiprocessor: %d\n", deviceProp.maxBlocksPerMultiProcessor);
+	printf("Max (parallel) threads per multiprocessor: %d\n", deviceProp.maxThreadsPerMultiProcessor);
+	printf("Max grid size: (%d, %d, %d)\n", deviceProp.maxGridSize[0], deviceProp.maxGridSize[1], deviceProp.maxGridSize[2]);
+	printf("Max threads per block: %d\n", deviceProp.maxThreadsPerBlock);
+	printf("Warp size: %d\n", deviceProp.warpSize);
+	printf("\n");
+}
+
 
 // Correctness Verification
 void verify_equality4(float4 v[], float4 x[], int N) {
@@ -235,12 +254,10 @@ int simulationLoopVisualEmb(GLFWwindow* window, cudaGraphicsResource_t graphicRe
 }
 
 
-int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResource, GLuint* VBO, float4* bodies, float4* d_accel, float4* d_vel) {
-	// Timing 
+int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResource, GLuint* VBO, float4* d_accel, float4* d_vel) {
 	clock_t t0, t1;
 	double time;
 	int counter = 0;
-
 	size_t size4 = sizeof(float4) * N_BODIES;
 	float4* d_bodies;
 
@@ -250,25 +267,19 @@ int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResou
 	// Get pointer to bodies
 	cudaGraphicsResourceGetMappedPointer((void**)&d_bodies, &size4, graphicResource);
 	
-	// Move bodies data to device
-	cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
-	
-	cudaGraphicsUnmapResources(1, &graphicResource, 0);
-
-	// Start timing
-	t0 = clock();
+	t0 = clock(); // Start the clock
 	while (!glfwWindowShouldClose(window)) {
-		if (counter == 1) {
+		if (counter == 1000) {
 			t1 = clock();
 			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
-			printf("1 calculations take: %f s\n", time);
+			printf("1000 calculations take: %f s\n", time);
 			counter = 0;
 			t0 = clock();
 		}
 		counter++;
 
 		try {
-			simulateVisual(graphicResource, d_bodies, d_accel, d_vel, N_BODIES);
+			simulate(d_bodies, d_accel, d_vel, N_BODIES);
 		}
 		catch (const std::exception& e) {
 			std::cerr << e.what() << std::endl;
@@ -286,14 +297,13 @@ int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResou
 		glfwPollEvents();
 	}
 
+	cudaGraphicsUnmapResources(1, &graphicResource, 0);
 	return 0;
 }
 
 
-int simulationLoopNoVisual(float4* d_bodies, float3* d_accel, float3* d_vel) {
+int simulationLoopNoVisual(float4* d_bodies, float4* d_accel, float4* d_vel) {
 	bool exit = false;
-
-	// Timing 
 	clock_t t0, t1;
 	double time;
 	int counter = 0;
@@ -393,6 +403,7 @@ int main(void) {
 
 	cudaMalloc((void**)&d_reduceMatrix, size4 * blocksPerGrid);
 
+	print_device_prop();
 	// Handle visualization activation
 	if (askForVisualization()) {
 		GLuint VBO;
@@ -401,7 +412,8 @@ int main(void) {
 
 		// This function allocates device memory for the bodies array using a cuda graphic resource
 		if (initVisualization(&window, bodies, &bodies_positions, &VBO) == 0) {
-			simulationLoopVisualEmb(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity, d_reduceMatrix);
+			// simulationLoopVisualEmb(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity, d_reduceMatrix);
+			simulationLoopVisual(window, bodies_positions, &VBO, d_accelerations, d_velocity);
 		}
 
 		glDeleteBuffers(1, &VBO);
@@ -409,17 +421,13 @@ int main(void) {
 		glfwTerminate();
 	}
 	else {
-		
 		// Allocate device memory for the bodies array and copy it from host to device
 		float4* d_bodies;
 		cudaMalloc((void**)&d_bodies, size4);
 		cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
-		//simulationLoopNoVisual(d_bodies, d_accelerations, d_velocity);
+		simulationLoopNoVisual(d_bodies, d_accelerations, d_velocity);
 		cudaFree(d_bodies);
-		
-		
-
-		
+	
 	}
 
 	cudaFree(d_velocity);
