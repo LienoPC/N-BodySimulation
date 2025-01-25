@@ -121,12 +121,14 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	float4 otherBody;
 	float4 myNewAccel = { 0.0f, 0.0f, 0.0f, 0.0f };
 
+
+	//float4 reduceBody;
 	// We are working in this algorithm in an NxN grid of threads, in which every thread computes one single interaction
 	// that then will be reduced and combined row-wise with all other acceleration over the same body
 	int tidX = blockIdx.x * blockDim.x + threadIdx.x; // Defines the body with which the computation should be
 	int tidY = blockIdx.y * blockDim.y + threadIdx.y; // Defines the effective body for which we are computing the interacion and over which will be executed the reduction
 	// Shared memory id
-	int sid = blockDim.x * threadIdx.y + threadIdx.x;
+	int sid = threadIdx.y * blockDim.x + threadIdx.x;
 	int tid = threadIdx.x;
 	if (tidX >= N || tidY >= N) {
 
@@ -171,25 +173,38 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	*/
 	
 	// Loop unrolling, knowing that we are using block of 32 threads
-	shMem[sid].x += shMem[sid + 16].x;
-	shMem[sid].y += shMem[sid + 16].y;
-	shMem[sid].z += shMem[sid + 16].z;
+	if (tid < 16) {
+		shMem[sid].x += shMem[sid + 16].x;
+		shMem[sid].y += shMem[sid + 16].y;
+		shMem[sid].z += shMem[sid + 16].z;
+	}
+	//__syncthreads();
+	if (tid < 8) {
+		shMem[sid].x += shMem[sid + 8].x;
+		shMem[sid].y += shMem[sid + 8].y;
+		shMem[sid].z += shMem[sid + 8].z;
+	}
+	//__syncthreads();
+	if (tid < 4) {
+		shMem[sid].x += shMem[sid + 4].x;
+		shMem[sid].y += shMem[sid + 4].y;
+		shMem[sid].z += shMem[sid + 4].z;
+	}
+	//__syncthreads();
+	if (tid < 2) {
+		shMem[sid].x += shMem[sid + 2].x;
+		shMem[sid].y += shMem[sid + 2].y;
+		shMem[sid].z += shMem[sid + 2].z;
+	}
+	//__syncthreads();
+	if(tid < 1){
+		shMem[sid].x += shMem[sid + 1].x;
+		shMem[sid].y += shMem[sid + 1].y;
+		shMem[sid].z += shMem[sid + 1].z;
+	}
 
-	shMem[sid].x += shMem[sid + 8].x;
-	shMem[sid].y += shMem[sid + 8].y;
-	shMem[sid].z += shMem[sid + 8].z;
 
-	shMem[sid].x += shMem[sid + 4].x;
-	shMem[sid].y += shMem[sid + 4].y;
-	shMem[sid].z += shMem[sid + 4].z;
-
-	shMem[sid].x += shMem[sid + 2].x;
-	shMem[sid].y += shMem[sid + 2].y;
-	shMem[sid].z += shMem[sid + 2].z;
-
-	shMem[sid].x += shMem[sid + 1].x;
-	shMem[sid].y += shMem[sid + 1].y;
-	shMem[sid].z += shMem[sid + 1].z;
+	
 
 	__syncthreads();
 
