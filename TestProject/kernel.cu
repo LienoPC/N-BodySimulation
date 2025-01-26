@@ -113,6 +113,34 @@ __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N)
 	*/
 }
 
+__device__ void warpReduce(volatile float4* shMem, int sid) {
+
+	shMem[sid].x += shMem[sid + 16].x;
+	shMem[sid].y += shMem[sid + 16].y;
+	shMem[sid].z += shMem[sid + 16].z;
+
+
+	shMem[sid].x += shMem[sid + 8].x;
+	shMem[sid].y += shMem[sid + 8].y;
+	shMem[sid].z += shMem[sid + 8].z;
+
+
+	shMem[sid].x += shMem[sid + 4].x;
+	shMem[sid].y += shMem[sid + 4].y;
+	shMem[sid].z += shMem[sid + 4].z;
+
+
+	shMem[sid].x += shMem[sid + 2].x;
+	shMem[sid].y += shMem[sid + 2].y;
+	shMem[sid].z += shMem[sid + 2].z;
+
+	shMem[sid].x += shMem[sid + 1].x;
+	shMem[sid].y += shMem[sid + 1].y;
+	shMem[sid].z += shMem[sid + 1].z;
+
+}
+
+
 
 // Embarassingly parallel kernel version
 __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* globalV, float4* reduceMatrix, int N) {
@@ -172,6 +200,7 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 	}
 	*/
 	
+	/*
 	// Loop unrolling, knowing that we are using block of 32 threads
 	if (tid < 16) {
 		shMem[sid].x += shMem[sid + 16].x;
@@ -202,7 +231,9 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 		shMem[sid].y += shMem[sid + 1].y;
 		shMem[sid].z += shMem[sid + 1].z;
 	}
-
+	*/
+	
+	warpReduce(shMem, sid);
 
 	
 
@@ -214,6 +245,111 @@ __global__ void kernel_emb_parallel(float4* globalX, float4* globalA, float4* gl
 		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shMem[sid];
 	}
 	
+
+}
+
+// Embarassingly parallel kernel version with first add during load for reduction
+__global__ void kernel_emb_parallel_fadl(float4* globalX, float4* globalA, float4* globalV, float4* reduceMatrix, int N) {
+	extern __shared__  __align__(16) float4 shMem[];
+	float4 baseBody; // Position (x, y, z) and weight (w)
+	float4 otherBody;
+	float4 myNewAccel1 = { 0.0f, 0.0f, 0.0f, 0.0f };
+	float4 myNewAccel2 = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+	// This version of the algorithm uses half of the threads
+	int tidX = blockIdx.x * (blockDim.x*2) + threadIdx.x; // Defines the body with which the computation should be
+	int tidY = blockIdx.y * blockDim.y + threadIdx.y; // Defines the effective body for which we are computing the interacion and over which will be executed the reduction
+	// Shared memory id
+	int sid = threadIdx.y * blockDim.x + threadIdx.x;
+	int tid = threadIdx.x;
+	if (tidX >= N || tidY >= N) {
+
+		return;
+	}
+	//printf("Prima del body interaction\n");
+
+	myNewAccel1 = bodyInteractions(globalX[tidY], globalX[tidX], myNewAccel1);
+	myNewAccel2 = bodyInteractions(globalX[tidY], globalX[tidX + blockDim.x], myNewAccel2);
+	
+
+	// Compute the single interaction
+	//printf("Prima del shared load\n");
+
+
+	// Load into shared memory along X dimension
+	shMem[sid].x = myNewAccel1.x + myNewAccel2.x;
+	shMem[sid].y = myNewAccel1.y + myNewAccel2.y;
+	shMem[sid].z = myNewAccel1.z + myNewAccel2.z;
+	// Wait for all threads completion
+	__syncthreads();
+
+	// Reduce and update body velocity and acceleration
+	// usign integration step
+	/*
+	// Interleaved Addressing Reduction
+	for (unsigned int s = 1; s < blockDim.x; s *= 2) {
+		int index = 2 * s * threadIdx.x;
+		if (index < blockDim.x) {
+			shAccel[index].x += shAccel[index + s].x;
+			shAccel[index].y += shAccel[index + s].y;
+			shAccel[index].z += shAccel[index + s].z;
+		}
+		__syncthreads();
+	}
+	*/
+	/*
+	// Sequential Addressing Reduction
+	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+		if (tid < s) {
+			shMem[sid].x += shMem[sid + s].x;
+			shMem[sid].y += shMem[sid + s].y;
+			shMem[sid].z += shMem[sid + s].z;
+		}
+		__syncthreads();
+	}
+	*/
+
+	//printf("Prima del reduce\n");
+
+	// Loop unrolling, knowing that we are using block of 32 threads (in this case, halved)
+	//__syncthreads();
+	if (tid < 8) {
+		shMem[sid].x += shMem[sid + 8].x;
+		shMem[sid].y += shMem[sid + 8].y;
+		shMem[sid].z += shMem[sid + 8].z;
+	}
+	//__syncthreads();
+	if (tid < 4) {
+		shMem[sid].x += shMem[sid + 4].x;
+		shMem[sid].y += shMem[sid + 4].y;
+		shMem[sid].z += shMem[sid + 4].z;
+	}
+	//__syncthreads();
+	if (tid < 2) {
+		shMem[sid].x += shMem[sid + 2].x;
+		shMem[sid].y += shMem[sid + 2].y;
+		shMem[sid].z += shMem[sid + 2].z;
+	}
+	//__syncthreads();
+	if(tid < 1){
+		shMem[sid].x += shMem[sid + 1].x;
+		shMem[sid].y += shMem[sid + 1].y;
+		shMem[sid].z += shMem[sid + 1].z;
+	}
+	
+
+	//warpReduce(shMem, sid);
+
+
+	//printf("Prima del reduceMatrix\n");
+	__syncthreads();
+
+	// At this point, we have the sum of all blocks X-wise computed interactions
+	// We need now to sum all the blocks over the X-axis for each body
+	if (threadIdx.x == 0) {
+		reduceMatrix[tidY * (gridDim.x*2) + blockIdx.x] = shMem[sid];
+	}
+
 
 }
 
@@ -271,15 +407,15 @@ void simulateVisual_embParallel(cudaGraphicsResource* graphic_res, float4* bodie
 
 	int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
 
-	dim3 blockDim(threadsPerBlock, threadsPerBlock);
-	dim3 gridDim(blocksPerGrid, blocksPerGrid);
-	size_t sharedMemSize = sizeof(float4) * threadsPerBlock * threadsPerBlock;
+	dim3 blockDim(threadsPerBlock/2, threadsPerBlock);
+	dim3 gridDim(blocksPerGrid/2, blocksPerGrid);
+	size_t sharedMemSize = sizeof(float4) * threadsPerBlock/2 * threadsPerBlock;
 	//printf("\BocksPerGrid: %d, ThreadsPerBlock %d", blocksPerGrid, threadsPerBlock);
 
 	//printf("\nBlockDim: %d,%d,%d\n", blockDim.x, blockDim.y, blockDim.z);
 	//printf("GridDim: %d,%d,%d\n", gridDim.x, gridDim.y, gridDim.z);
 	// Launch thread computation
-	kernel_emb_parallel << <gridDim, blockDim, sharedMemSize >> > (d_bodies, d_accelerations, d_velocity, d_reduceMatrix, N);
+	kernel_emb_parallel_fadl << <gridDim, blockDim, sharedMemSize >> > (d_bodies, d_accelerations, d_velocity, d_reduceMatrix, N);
 	cudaDeviceSynchronize();
 	interBlockReduction << < blocksPerGrid, threadsPerBlock >> > (d_bodies, d_accelerations, d_velocity, d_reduceMatrix, N, blocksPerGrid);
 	// Copy data from CUDA to OpenGL
