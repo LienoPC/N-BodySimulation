@@ -1,6 +1,7 @@
 #pragma once
 
 #define THREADS_PER_BLOCK 32
+#define TILE_WIDTH_FACTOR 1
 #define N_BODIES 8192
 #define MAX_X 100000.0
 #define MAX_Y 100000.0

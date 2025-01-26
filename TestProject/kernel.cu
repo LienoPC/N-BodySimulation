@@ -39,24 +39,25 @@ __device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 }
 
 
-__device__ float4 tile_interaction(float4 myBody, float4 accel) {
+__device__ float4 tile_interaction(float4 myBody, float4 accel, int tileFirstIdx, int tileWidthFactor, int N) {
 	int i;
 	extern __shared__  __align__(16) float4 shBodies[];
 	
 	// Unrolling loop to increase ILP
 	#pragma unroll
-	for (i = 0; i < blockDim.x; i++) {
+	for (i = 0; i < blockDim.x * tileWidthFactor && i < N - tileFirstIdx; i++) {
 		accel = bodyInteractions(myBody, shBodies[i], accel);
 	}
 	return accel;
 }
 
 
-__global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N) {
+__global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N, int tileWidthFactor) {
 	extern __shared__  __align__(16) float4 shBodies[];
 	float4 myBody, myNewBody; // Position (x, y, z) and weight (w)
 	float4 myNewVel;
 	float4 myNewAccel = { 0.0f, 0.0f, 0.0f, 0.0f };
+	int tileWidth, globalIdx, sharedIdx;
 	
 	// We use 1D blocks because each thread in a block computes the interactions between its body and each other body serially,
 	// fetching the descriptions of the other bodies from shared memory after they've been loaded. 
@@ -71,26 +72,28 @@ __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N)
 
 	myNewBody = globalX[tid];
 	myNewVel = globalV[tid];
+	tileWidth = blockDim.x * tileWidthFactor;
 
-	// Each tile has dimension (blockDim.x * blockDim.x)
-	for (int i = 0, int tile = 0; i < N; i += blockDim.x, tile++) {
-		int idx = tile * blockDim.x + threadIdx.x;
-
+	// Each tile is of size (blockDim.x, blockDim.x * tileWidthFactor)
+	for (int i = 0, int tile = 0; i < N; i += tileWidth, tile++) {
 		// Load data into shared memory if within bounds
-		if (idx < N) {
-			shBodies[threadIdx.x] = globalX[idx];
-		}
+		for (int j = 0; j < tileWidthFactor; j++) {
+			sharedIdx = blockDim.x * j + threadIdx.x;
+			globalIdx = tile * tileWidth + blockDim.x * j + threadIdx.x;
+
+			if (globalIdx < N) { // Make sure we avoid out of bounds accesses if the last tile is smaller
+				shBodies[sharedIdx] = globalX[globalIdx];
+			}
 #if __DEBUG__	
-		else {
-			printf("Thread %d - Index %d is out of globalX\n", tid, idx);
-		}
+			else {
+				printf("Thread %d - Index %d is out of globalX\n", tid, globalIdx);
+			}
 #endif
+		}
 		__syncthreads();
 
 		// Compute interactions
-		if (idx < N) {
-			myNewAccel = tile_interaction(myNewBody, myNewAccel);
-		}
+		myNewAccel = tile_interaction(myNewBody, myNewAccel, tile * tileWidth, tileWidthFactor, N);
 		__syncthreads();
 	}
 
@@ -276,15 +279,15 @@ void simulate(float4* d_bodies, float4* d_accelerations, float4* d_velocity, int
 
 	int threadsPerBlock = THREADS_PER_BLOCK;
 	if (threadsPerBlock > deviceProp.maxThreadsPerBlock)
-		throw std::runtime_error("threadsPerBlock is greater than the device maximum threads per block");
+		throw std::runtime_error("threadsPerBlock is greater than the device maximum threads per block.");
 
 	int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
-	size_t sharedMemSize = sizeof(float4) * threadsPerBlock;
+	size_t sharedMemSize = sizeof(float4) * threadsPerBlock * TILE_WIDTH_FACTOR;
 
 	if (sharedMemSize > deviceProp.sharedMemPerBlock || sharedMemSize * blocksPerGrid > deviceProp.sharedMemPerMultiprocessor * deviceProp.multiProcessorCount) {
-		throw std::runtime_error("Shared memory request too large");
+		throw std::runtime_error("Shared memory request too large.");
 	}
 
-	kernel <<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_bodies, d_accelerations, d_velocity, N);
+	kernel <<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_bodies, d_accelerations, d_velocity, N, TILE_WIDTH_FACTOR);
 	cudaDeviceSynchronize();
 }

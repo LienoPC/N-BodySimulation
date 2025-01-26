@@ -135,9 +135,11 @@ void print_device_prop() {
 	printf("Name: %s\n", deviceProp.name);
 	printf("Total global memory: %llu\n", deviceProp.totalGlobalMem);
 	printf("Total shared memory: %llu\n", (size_t) deviceProp.multiProcessorCount * deviceProp.sharedMemPerMultiprocessor);
+	printf("Multiprocessors count: %d\n", deviceProp.multiProcessorCount);
 	printf("Shared memory per multiprocessor: %llu\n", deviceProp.sharedMemPerMultiprocessor);
 	printf("Shared memory per block: %llu\n", deviceProp.sharedMemPerBlock);
-	printf("Multi processor count: %d\n", deviceProp.multiProcessorCount);
+	printf("Registers per block: %d\n", deviceProp.regsPerBlock);
+	printf("Registers per multiprocessor: %d\n", deviceProp.regsPerMultiprocessor);
 	printf("Max (parallel) blocks per multiprocessor: %d\n", deviceProp.maxBlocksPerMultiProcessor);
 	printf("Max (parallel) threads per multiprocessor: %d\n", deviceProp.maxThreadsPerMultiProcessor);
 	printf("Max grid size: (%d, %d, %d)\n", deviceProp.maxGridSize[0], deviceProp.maxGridSize[1], deviceProp.maxGridSize[2]);
