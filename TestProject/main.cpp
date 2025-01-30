@@ -16,6 +16,8 @@
 #include <conio.h> // Only available on Windows
 #include <cuda_runtime.h>
 
+#define FLOAT_3 0
+
 /*
 Function that computes interaction between two bodies:
 -bi: vector with (posx, posy, posz, weight)
@@ -180,6 +182,60 @@ void copy_vector_bodies(float4 in[], float4 out[], int N) {
 }
 
 
+int simulationLoopVisualEmb_float3(GLFWwindow* window, cudaGraphicsResource_t graphicResource, GLuint* VBO, float4* bodies, float3* d_accel, float3* d_vel, float3* d_reduceMatrix) {
+	// Timing 
+	clock_t t0, t1;
+	double time;
+	int counter = 0;
+
+	size_t size4 = sizeof(float4) * N_BODIES;
+	float4* d_bodies;
+
+	// Map openGL buffer to cuda pointer
+	cudaGraphicsMapResources(1, &graphicResource, 0);
+
+	// Get pointer to bodies
+	cudaGraphicsResourceGetMappedPointer((void**)&d_bodies, &size4, graphicResource);
+
+	// Move bodies data to device
+	cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
+
+	cudaGraphicsUnmapResources(1, &graphicResource, 0);
+
+	// Start timing
+	t0 = clock();
+	while (!glfwWindowShouldClose(window)) {
+		if (counter == 1) {
+			t1 = clock();
+			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
+			printf("1 calculations take: %f s\n", time);
+			counter = 0;
+			t0 = clock();
+		}
+		counter++;
+
+		try {
+			simulateVisual_embParallel_float3(graphicResource, d_bodies, d_accel, d_vel, d_reduceMatrix, N_BODIES);
+		}
+		catch (const std::exception& e) {
+			std::cerr << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		//CPU_compute(bodies, accelerations, velocity, N_BODIES);
+
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// Render bodies
+		renderBodies(*VBO, N_BODIES);
+
+		glfwSwapBuffers(window);
+		glfwPollEvents();
+	}
+
+	return 0;
+}
+
 int simulationLoopVisualEmb(GLFWwindow* window, cudaGraphicsResource_t graphicResource, GLuint* VBO, float4* bodies, float4* d_accel, float4* d_vel, float4* d_reduceMatrix) {
 	// Timing 
 	clock_t t0, t1;
@@ -261,7 +317,7 @@ int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResou
 		if (counter == 1) {
 			t1 = clock();
 			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
-			printf("1 calculations take: %f s\n", time);
+			//printf("1 calculations take: %f s\n", time);
 			counter = 0;
 			t0 = clock();
 		}
@@ -352,11 +408,19 @@ bool askForVisualization() {
 }
 
 
+
 int main(void) {
 	float4* bodies;
+#if FLOAT_3
+	float3* accelerations;
+	float3* velocity;
+	float3* d_reduceMatrix;
+#else
 	float4* accelerations;
 	float4* velocity;
 	float4* d_reduceMatrix;
+#endif
+	
 
 	int size4 = sizeof(float4) * N_BODIES;	
 	int size3 = sizeof(float3) * N_BODIES;
@@ -368,9 +432,26 @@ int main(void) {
 	cudaMallocHost(&accelerations, size4);
 	
 	fill_with_random4(bodies, N_BODIES);
+#if FLOAT_3
+	fill_with_zeroes3(velocity, N_BODIES);
+	fill_with_zeroes3(accelerations, N_BODIES);
+#else
 	fill_with_zeroes4(velocity, N_BODIES);
 	fill_with_zeroes4(accelerations, N_BODIES);
+#endif
+	
+#if FLOAT_3
+	// Create space for device copies
+	float3* d_velocity;
+	float3* d_accelerations;
 
+	cudaMalloc((void**)&d_velocity, size3);
+	cudaMalloc((void**)&d_accelerations, size3);
+
+	// Copy to device
+	cudaMemcpy(d_velocity, velocity, size3, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_accelerations, accelerations, size3, cudaMemcpyHostToDevice);
+#else
 	// Create space for device copies
 	float4* d_velocity;
 	float4* d_accelerations;
@@ -381,7 +462,8 @@ int main(void) {
 	// Copy to device
 	cudaMemcpy(d_velocity, velocity, size4, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_accelerations, accelerations, size4, cudaMemcpyHostToDevice);
-	
+#endif
+
 	cudaDeviceProp deviceProp;
 	cudaGetDeviceProperties(&deviceProp, 0);
 
@@ -391,7 +473,11 @@ int main(void) {
 
 	int blocksPerGrid = (N_BODIES + threadsPerBlock - 1) / threadsPerBlock;
 
+#if FLOAT_3
+	cudaMalloc((void**)&d_reduceMatrix, size3 * blocksPerGrid);
+#else
 	cudaMalloc((void**)&d_reduceMatrix, size4 * blocksPerGrid);
+#endif
 
 	// Handle visualization activation
 	if (askForVisualization()) {
@@ -401,7 +487,11 @@ int main(void) {
 
 		// This function allocates device memory for the bodies array using a cuda graphic resource
 		if (initVisualization(&window, bodies, &bodies_positions, &VBO) == 0) {
-			simulationLoopVisualEmb(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity, d_reduceMatrix);
+#if FLOAT_3
+			simulationLoopVisualEmb_float3(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity, d_reduceMatrix);
+#else
+			simulationLoopVisualEmb(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity,d_reduceMatrix);
+#endif
 		}
 
 		glDeleteBuffers(1, &VBO);
