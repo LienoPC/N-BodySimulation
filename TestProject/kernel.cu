@@ -5,8 +5,6 @@
 #include <stdexcept>
 #include "constants.h"
 
-#define __DEBUG__ 1
-
 #define CUDA_CALL(call) do {                                 \
     cudaError_t err = call;                                  \
     if (err != cudaSuccess) {                                \
@@ -60,13 +58,9 @@ __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N,
 	int tileWidth, globalIdx, sharedIdx;
 	
 	// We use 1D blocks because each thread in a block computes the interactions between its body and each other body serially,
-	// fetching the descriptions of the other bodies from shared memory after they've been loaded. 
+	// fetching the descriptions of the other bodies from shared memory after they've been loaded.
 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if (tid >= N) {
-#if __DEBUG__
-		printf("Thread index %d > N (number of bodies), stopping kernel exec\n", tid);
-		__syncthreads();
-#endif
 		return;
 	}
 
@@ -84,11 +78,6 @@ __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N,
 			if (globalIdx < N) { // Make sure we avoid out of bounds accesses if the last tile is smaller
 				shBodies[sharedIdx] = globalX[globalIdx];
 			}
-#if __DEBUG__	
-			else {
-				printf("Thread %d - Index %d is out of globalX\n", tid, globalIdx);
-			}
-#endif
 		}
 		__syncthreads();
 
@@ -111,17 +100,6 @@ __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N,
 	globalX[tid] = myNewBody;
 	globalV[tid] = myNewVel;   
 	globalA[tid] = myNewAccel;  
-
-	/*
-    globalA[tid].x = 0.0;
-	globalA[tid].y = 0.0;
-	globalA[tid].z = 0.0;	
-	*/
-
-	/*
-	printf("d_velocity[%d] = (%f, %f, %f)\n", 1, globalV[1].x, globalV[1].y, globalV[1].z);
-	printf("d_accelerations[%d] = (%f, %f, %f)\n", 1, globalA[1].x, globalA[1].y, globalA[1].z);
-	*/
 }
 
 
