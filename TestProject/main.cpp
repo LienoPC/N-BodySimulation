@@ -17,6 +17,8 @@
 #include <cuda_runtime.h>
 
 #define FLOAT_3 0
+#define FADL 1
+#define BLOCK_64 1
 
 /*
 Function that computes interaction between two bodies:
@@ -161,7 +163,7 @@ void verify_equality3(float3 v[], float3 x[], int N) {
 
 void verify_still_bodies(float4 v[], float4 x[], int N) {
 	bool equal = true;
-	float tolerance = 0.001;
+	float tolerance = 0.01;
 	for (int i = 0; i < N; i++) {
 		float diffX = std::fabs(v[i].x - x[i].x);
 		float diffY = std::fabs(v[i].y - x[i].y);
@@ -269,7 +271,13 @@ int simulationLoopVisualEmb(GLFWwindow* window, cudaGraphicsResource_t graphicRe
 		counter++;
 
 		try {
+#if FADL
+			simulateVisual_embParallel_fadl(graphicResource, d_bodies, d_accel, d_vel, d_reduceMatrix, N_BODIES);
+
+#else
 			simulateVisual_embParallel(graphicResource, d_bodies, d_accel, d_vel, d_reduceMatrix, N_BODIES);
+
+#endif
 		}
 		catch (const std::exception& e) {
 			std::cerr << e.what() << std::endl;
@@ -317,7 +325,7 @@ int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResou
 		if (counter == 1) {
 			t1 = clock();
 			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
-			//printf("1 calculations take: %f s\n", time);
+			printf("1 calculations take: %f s\n", time);
 			counter = 0;
 			t0 = clock();
 		}
@@ -474,11 +482,26 @@ int main(void) {
 	int blocksPerGrid = (N_BODIES + threadsPerBlock - 1) / threadsPerBlock;
 
 #if FLOAT_3
+#if FADL
+	cudaMalloc((void**)&d_reduceMatrix, size3 * blocksPerGrid/2);
+#else
 	cudaMalloc((void**)&d_reduceMatrix, size3 * blocksPerGrid);
+#endif
+
+#else
+
+#if FADL
+	cudaMalloc((void**)&d_reduceMatrix, size4 * blocksPerGrid/2);
 #else
 	cudaMalloc((void**)&d_reduceMatrix, size4 * blocksPerGrid);
 #endif
 
+#endif
+
+#if BLOCK_64
+	cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+
+#endif
 	// Handle visualization activation
 	if (askForVisualization()) {
 		GLuint VBO;
@@ -491,6 +514,8 @@ int main(void) {
 			simulationLoopVisualEmb_float3(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity, d_reduceMatrix);
 #else
 			simulationLoopVisualEmb(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity,d_reduceMatrix);
+			//simulationLoopVisual(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity);
+
 #endif
 		}
 
