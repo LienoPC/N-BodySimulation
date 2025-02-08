@@ -14,8 +14,8 @@
     }                                                        \
 } while (0)
 #define __DEBUG__ 1
-#define THREADS_PER_BLOCK 32
-#define TILE_WIDTH_FACTOR 32
+#define THREADS_PER_BLOCK 1024
+#define TILE_WIDTH_FACTOR 1
 
 __device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 	// Compute r_ij position vector of i from j
@@ -784,6 +784,43 @@ void simulateVisual_embParallel_float3(cudaGraphicsResource* graphic_res, float4
 
 }
 
+
+void simulateVisual(cudaGraphicsResource* graphic_res, float4* bodies, float4* d_accelerations, float4* d_velocity, int N) {
+	size_t size4 = sizeof(float4) * N;
+	float4* d_bodies;
+	// Map openGL buffer to cuda pointer
+	cudaGraphicsMapResources(1, &graphic_res, 0);
+
+	// Get pointer to bodies
+	cudaGraphicsResourceGetMappedPointer((void**)&d_bodies, &size4, graphic_res);
+
+	cudaDeviceProp deviceProp;
+	cudaGetDeviceProperties(&deviceProp, 0);
+
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	if (threadsPerBlock > deviceProp.maxThreadsPerBlock)
+		throw std::runtime_error("threadsPerBlock is greater than the device maximum threads per block.");
+
+	int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+	size_t sharedMemSize = sizeof(float4) * threadsPerBlock * TILE_WIDTH_FACTOR;
+
+	if (sharedMemSize > deviceProp.sharedMemPerBlock || sharedMemSize * blocksPerGrid > deviceProp.sharedMemPerMultiprocessor * deviceProp.multiProcessorCount) {
+		throw std::runtime_error("Shared memory request too large.");
+	}
+
+	kernel << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (d_bodies, d_accelerations, d_velocity, N, TILE_WIDTH_FACTOR);
+	cudaDeviceSynchronize();
+
+	cudaGraphicsUnmapResources(1, &graphic_res, 0);
+
+	/*
+	err = cudaMemcpy(velocity, d_velocity, size3, cudaMemcpyDeviceToHost);
+	if (err != cudaSuccess) {
+		//printf("Memcpy DeviceToHost bodies failed: %s\n", cudaGetErrorString(err));
+	}
+	*/
+
+}
 
 void simulate(float4* d_bodies, float4* d_accelerations, float4* d_velocity, int N) {
 	cudaDeviceProp deviceProp;

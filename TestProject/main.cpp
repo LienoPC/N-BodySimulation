@@ -16,7 +16,7 @@
 #include <conio.h> // Only available on Windows
 #include <cuda_runtime.h>
 
-#define REDUCTION 1
+#define REDUCTION 0
 #define FLOAT_3 0
 #define FADL 1
 #define BLOCK_64 1
@@ -336,17 +336,17 @@ int simulationLoopVisual(GLFWwindow* window, cudaGraphicsResource_t graphicResou
 	
 	t0 = clock(); // Start the clock
 	while (!glfwWindowShouldClose(window)) {
-		if (counter == 1000) {
+		if (counter == 1) {
 			t1 = clock();
 			time = ((double)(t1 - t0)) / CLOCKS_PER_SEC;
-			printf("1000 calculations take: %f s\n", time);
+			printf("1 calculations take: %f s\n", time);
 			counter = 0;
 			t0 = clock();
 		}
 		counter++;
 
 		try {
-			simulate(d_bodies, d_accel, d_vel, N_BODIES);
+			simulateVisual(graphicResource, d_bodies, d_accel, d_vel, N_BODIES);
 		}
 		catch (const std::exception& e) {
 			std::cerr << e.what() << std::endl;
@@ -533,7 +533,7 @@ int main(void) {
 #endif
 
 #else
-			simulationLoopVisual(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity);
+			simulationLoopVisual(window, bodies_positions, &VBO, d_accelerations, d_velocity);
 #endif
 		}
 
