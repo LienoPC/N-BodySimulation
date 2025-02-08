@@ -15,6 +15,7 @@
 } while (0)
 #define __DEBUG__ 1
 #define THREADS_PER_BLOCK 32
+#define TILE_WIDTH_FACTOR 32
 
 __device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 	// Compute r_ij position vector of i from j
@@ -35,7 +36,7 @@ __device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 	ai.y += r_ij.y * factor;
 	ai.z += r_ij.z * factor;
 
-	return ai;
+	return ai;	
 }
 
 __device__ float3 bodyInteractions_float3(float4 bi, float4 bj, float3 ai) {

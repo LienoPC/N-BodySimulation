@@ -16,6 +16,7 @@
 #include <conio.h> // Only available on Windows
 #include <cuda_runtime.h>
 
+#define REDUCTION 1
 #define FLOAT_3 0
 #define FADL 1
 #define BLOCK_64 1
@@ -523,12 +524,16 @@ int main(void) {
 
 		// This function allocates device memory for the bodies array using a cuda graphic resource
 		if (initVisualization(&window, bodies, &bodies_positions, &VBO) == 0) {
+#if REDUCTION
+
 #if FLOAT_3
 			simulationLoopVisualEmb_float3(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity, d_reduceMatrix);
 #else
 			simulationLoopVisualEmb(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity,d_reduceMatrix);
-			//simulationLoopVisual(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity);
+#endif
 
+#else
+			simulationLoopVisual(window, bodies_positions, &VBO, bodies, d_accelerations, d_velocity);
 #endif
 		}
 
