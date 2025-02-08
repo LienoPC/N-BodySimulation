@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 TestProject/TestProject.vcxproj
 *.vcxproj
+TestProject/TestProject.vcxproj
