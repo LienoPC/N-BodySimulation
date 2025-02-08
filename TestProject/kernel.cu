@@ -87,9 +87,9 @@ __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N,
 	}
 
 	// Update the body's velocity by half a step
-	myNewVel.x += 0.5 * DT * myNewAccel.x; 
-	myNewVel.y += 0.5 * DT * myNewAccel.y;
-	myNewVel.z += 0.5 * DT * myNewAccel.z;
+	myNewVel.x += 0.5f * DT * myNewAccel.x; 
+	myNewVel.y += 0.5f * DT * myNewAccel.y;
+	myNewVel.z += 0.5f * DT * myNewAccel.z;
 
 	// Update the body's position by a full-step
 	myNewBody.x += DT * myNewVel.x;

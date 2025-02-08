@@ -7,8 +7,8 @@
 #include <vector>
 #include <iostream>
 #include <string>
-#include <stdio.h>
 #include <algorithm>
+#include <stdio.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -35,8 +35,8 @@ Function that computes interaction between two bodies:
 
 
 // Compute the interaction between two bodies
-float3 bodyInteractions_CPU(float4 bi, float4 bj, float3 ai) {
-	float3 r_ij;
+float4 bodyInteractions_CPU(float4 bi, float4 bj, float4 ai) {
+	float4 r_ij;
 	r_ij.x = bj.x - bi.x;
 	r_ij.y = bj.y - bi.y;
 	r_ij.z = bj.z - bi.z;
@@ -54,12 +54,12 @@ float3 bodyInteractions_CPU(float4 bi, float4 bj, float3 ai) {
 
 
 // N-body kernel on the CPU
-void CPU_compute(float4* gX, float3* gA, float3* gV, int N) {
+void CPU_compute(float4* gX, float4* gA, float4* gV, int N) {
 
 #pragma omp parallel for
 	for (int i = 0; i < N; ++i) {
 		float4 body = gX[i];
-		float3 acceleration = { 0.0f, 0.0f, 0.0f };
+		float4 acceleration = { 0.0f, 0.0f, 0.0f };
 
 		for (int j = 0; j < N; ++j) {
 			if (i != j) {
@@ -68,9 +68,9 @@ void CPU_compute(float4* gX, float3* gA, float3* gV, int N) {
 		}
 		gA[i] = acceleration;
 		// Integration step
-		gV[i].x = gV[i].x + 0.5 * DT * acceleration.x; // advance vel by half-step
-		gV[i].y = gV[i].y + 0.5 * DT * acceleration.y; // advance vel by half-step
-		gV[i].z = gV[i].z + 0.5 * DT * acceleration.z; // advance vel by half-step
+		gV[i].x = gV[i].x + 0.5f * DT * acceleration.x; // advance vel by half-step
+		gV[i].y = gV[i].y + 0.5f * DT * acceleration.y; // advance vel by half-step
+		gV[i].z = gV[i].z + 0.5f * DT * acceleration.z; // advance vel by half-step
 
 		gX[i].x = gX[i].x + DT * gV[i].x; // advance pos by full-step
 		gX[i].y = gX[i].y + DT * gV[i].y; // advance pos by full-step
@@ -155,7 +155,7 @@ void verify_equality4(float4 v[], float4 x[], int N) {
 	bool equal = true;
 	for (int i = 0; i < N; i++) {
 		if (!(v[i].x == x[i].x && v[i].y == x[i].y && v[i].z == x[i].z && v[i].w == x[i].w)) {
-			printf("Problem at body %i", i);
+			printf("Problem at body %i\n", i);
 		}
 	}
 }
@@ -180,12 +180,20 @@ void verify_equality3(float3 v[], float3 x[], int N) {
 
 void verify_still_bodies(float4 v[], float4 x[], int N) {
 	bool equal = true;
-	float tolerance = 0.001;
+	float tolFactor = 1.0 / 100; 
+	float diffX, diffY, diffZ;
+	float toleranceX, toleranceY, toleranceZ;
+
 	for (int i = 0; i < N; i++) {
-		float diffX = std::fabs(v[i].x - x[i].x);
-		float diffY = std::fabs(v[i].y - x[i].y);
-		float diffZ = std::fabs(v[i].z - x[i].z);
-		if (diffX < tolerance || diffY < tolerance || diffZ < tolerance) {
+		toleranceX = std::min(std::fabs(v[i].x * tolFactor), std::fabs(x[i].x * tolFactor));
+		toleranceY = std::min(std::fabs(v[i].y * tolFactor), std::fabs(x[i].y * tolFactor));
+		toleranceZ = std::min(std::fabs(v[i].z * tolFactor), std::fabs(x[i].z * tolFactor));
+
+		diffX = std::fabs(v[i].x - x[i].x);
+		diffY = std::fabs(v[i].y - x[i].y);
+		diffZ = std::fabs(v[i].z - x[i].z);
+
+		if (diffX > toleranceX || diffY > toleranceY || diffZ > toleranceZ) {
 			printf("Problem at body %i; ", i);
 			printf(" %f %f %f ", v[i].x, v[i].y, v[i].z);
 			printf(" %f %f %f\n", x[i].x, x[i].y, x[i].z);
@@ -336,9 +344,51 @@ int simulationLoopNoVisual(float4* d_bodies, float4* d_accel, float4* d_vel) {
 			std::cerr << e.what() << std::endl;
 			return EXIT_FAILURE;
 		}
-
-		//CPU_compute(bodies, accelerations, velocity, N_BODIES);
 	}
+
+	return 0;
+}
+
+int compareHostToDevice(float4* d_bodies, float4* d_accel, float4* d_vel, float4* bodies, float4* accelerations, float4* velocity) {
+	float4* dToH_bodies;
+	float4* dToH_velocity;
+	float4* dToH_accelerations;
+	int size4 = sizeof(float4) * N_BODIES;
+
+	cudaMallocHost(&dToH_bodies, size4);
+	cudaMallocHost(&dToH_velocity, size4);
+	cudaMallocHost(&dToH_accelerations, size4);
+
+	for (int i = 0; i < 1000; i++) {
+		try {
+			simulate(d_bodies, d_accel, d_vel, N_BODIES);
+		}
+		catch (const std::exception& e) {
+			std::cerr << e.what() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		CPU_compute(bodies, accelerations, velocity, N_BODIES);
+	}
+
+	cudaDeviceSynchronize();
+
+	cudaMemcpy(dToH_bodies, d_bodies, size4, cudaMemcpyDeviceToHost);
+	cudaMemcpy(dToH_velocity, d_vel, size4, cudaMemcpyDeviceToHost);
+	cudaMemcpy(dToH_accelerations, d_accel, size4, cudaMemcpyDeviceToHost);
+
+	printf("Starting verification...\n");
+	printf("Bodies:\n");
+	verify_still_bodies(dToH_bodies, bodies, N_BODIES);
+	printf("Velocities:\n");
+	verify_still_bodies(dToH_velocity, velocity, N_BODIES);
+	printf("Accelerations:\n");
+	verify_still_bodies(dToH_accelerations, accelerations, N_BODIES);
+	printf("Verification complete\n");
+
+	cudaFreeHost(dToH_bodies);
+	cudaFreeHost(dToH_accelerations);
+	cudaFreeHost(dToH_velocity);
 
 	return 0;
 }
@@ -428,6 +478,7 @@ int main(void) {
 		cudaMalloc((void**)&d_bodies, size4);
 		cudaMemcpy(d_bodies, bodies, size4, cudaMemcpyHostToDevice);
 		simulationLoopNoVisual(d_bodies, d_accelerations, d_velocity);
+		//compareHostToDevice(d_bodies, d_accelerations, d_velocity, bodies, accelerations, velocity);
 		cudaFree(d_bodies);
 	
 	}
