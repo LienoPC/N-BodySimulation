@@ -16,10 +16,10 @@
 #include <conio.h> // Only available on Windows
 #include <cuda_runtime.h>
 
-#define REDUCTION 0
+#define REDUCTION 1
 #define FLOAT_3 0
 #define FADL 1
-#define BLOCK_64 1
+#define BLOCK_64 0
 
 /*
 Function that computes interaction between two bodies:
@@ -538,7 +538,7 @@ int main(void) {
 	cudaDeviceProp deviceProp;
 	cudaGetDeviceProperties(&deviceProp, 0);
 
-	int threadsPerBlock = 32;
+	int threadsPerBlock = 32; // This is fixed for reduction kernel
 	if (threadsPerBlock > deviceProp.maxThreadsPerBlock)
 		throw std::runtime_error("threadsPerBlock is greater than the device maximum threads per block");
 

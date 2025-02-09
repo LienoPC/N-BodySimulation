@@ -14,8 +14,7 @@
     }                                                        \
 } while (0)
 #define __DEBUG__ 1
-#define THREADS_PER_BLOCK 1024
-#define TILE_WIDTH_FACTOR 1
+
 
 __device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 	// Compute r_ij position vector of i from j
@@ -206,7 +205,7 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 	// usign integration step
 	
 
-	/*
+	
 	// Sequential Addressing Reduction
 	// 4-way bank conflict
 	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
@@ -217,11 +216,11 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 		}
 		__syncthreads();
 	}
-	*/
+
 	
 	
 	
-	
+	/*
 	// Loop unrolling, knowing that we are using block of 32 threads
 	if (tid < 16) {
 		myNewAccel.x += shMem[sid + 16].x;
@@ -259,6 +258,8 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 		shMem[sid] = myNewAccel;
 	}
 
+	*/
+	
 	
 
 	
@@ -267,7 +268,7 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 
 	
 
-	__syncthreads();
+	//__syncthreads();
 
 	// At this point, we have the sum of all blocks X-wise computed interactions
 	// We need now to sum all the blocks over the X-axis for each body
@@ -385,6 +386,9 @@ __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int
 	extern __shared__  __align__(16) float4 shMem[];
 	//float4 baseBody; // Position (x, y, z) and weight (w)
 	//float4 otherBody;
+	float myNewAccel1x = 0.0f;
+	float myNewAccel1y = 0.0f;
+	float myNewAccel1z = 0.0f;
 	float4 myNewAccel1 = { 0.0f, 0.0f, 0.0f, 0.0f };
 	float4 myNewAccel2 = { 0.0f, 0.0f, 0.0f, 0.0f };
 
@@ -402,11 +406,14 @@ __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int
 	myNewAccel2 = bodyInteractions(globalX[tidY], globalX[tidX + blockDim.x], myNewAccel2);
 
 
+	myNewAccel1x = myNewAccel1.x;
+	myNewAccel1y = myNewAccel1.y;
+	myNewAccel1z = myNewAccel1.z;
 
 	// Load into shared memory along X dimension
-	myNewAccel1.x += myNewAccel2.x;
-	myNewAccel1.y += myNewAccel2.y;
-	myNewAccel1.z += myNewAccel2.z;
+	myNewAccel1x += myNewAccel2.x;
+	myNewAccel1y += myNewAccel2.y;
+	myNewAccel1z += myNewAccel2.z;
 	shMem[sid] = myNewAccel1;
 	// Wait for all threads completion
 	__syncthreads();
@@ -415,32 +422,40 @@ __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int
 	// Each reduction step produces a 4-way bank conflict
 	//__syncthreads();
 	if (tid < 8) {
-		myNewAccel1.x += shMem[sid + 8].x;
-		myNewAccel1.y += shMem[sid + 8].y;
-		myNewAccel1.z += shMem[sid + 8].z;
-		shMem[sid] = myNewAccel1;
+		myNewAccel1x += shMem[sid + 8].x;
+		myNewAccel1y += shMem[sid + 8].y;
+		myNewAccel1z += shMem[sid + 8].z;
+		shMem[sid].x = myNewAccel1x;
+		shMem[sid].y = myNewAccel1y;
+		shMem[sid].z = myNewAccel1z;
 
 	}
 	__syncthreads();
 	if (tid < 4) {
-		myNewAccel1.x += shMem[sid + 4].x;
-		myNewAccel1.y += shMem[sid + 4].y;
-		myNewAccel1.z += shMem[sid + 4].z;
-		shMem[sid] = myNewAccel1;
+		myNewAccel1x += shMem[sid + 4].x;
+		myNewAccel1y += shMem[sid + 4].y;
+		myNewAccel1z += shMem[sid + 4].z;
+		shMem[sid].x = myNewAccel1x;
+		shMem[sid].y = myNewAccel1y;
+		shMem[sid].z = myNewAccel1z;
 	}
 	__syncthreads();
 	if (tid < 2) {
-		myNewAccel1.x += shMem[sid + 2].x;
-		myNewAccel1.y += shMem[sid + 2].y;
-		myNewAccel1.z += shMem[sid + 2].z;
-		shMem[sid] = myNewAccel1;
+		myNewAccel1x += shMem[sid + 2].x;
+		myNewAccel1y += shMem[sid + 2].y;
+		myNewAccel1z += shMem[sid + 2].z;
+		shMem[sid].x = myNewAccel1x;
+		shMem[sid].y = myNewAccel1y;
+		shMem[sid].z = myNewAccel1z;
 	}
 	__syncthreads();
 	if (tid < 1) {
-		myNewAccel1.x += shMem[sid + 1].x;
-		myNewAccel1.y += shMem[sid + 1].y;
-		myNewAccel1.z += shMem[sid + 1].z;
-		shMem[sid] = myNewAccel1;
+		myNewAccel1x += shMem[sid + 1].x;
+		myNewAccel1y += shMem[sid + 1].y;
+		myNewAccel1z += shMem[sid + 1].z;
+		shMem[sid].x = myNewAccel1x;
+		shMem[sid].y = myNewAccel1y;
+		shMem[sid].z = myNewAccel1z;
 	}
 	
 	__syncthreads();
