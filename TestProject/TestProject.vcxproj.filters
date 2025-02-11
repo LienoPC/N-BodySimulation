@@ -6,11 +6,15 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="simulation_visualization.cpp" />
+    <ClCompile Include="utils.cpp" />
+    <ClCompile Include="validation.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="constants.h" />
     <ClInclude Include="kernel.cuh" />
     <ClInclude Include="simulation_visualization.h" />
+    <ClInclude Include="utils.h" />
+    <ClInclude Include="validation.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="WithoutOpenGLIntegration">

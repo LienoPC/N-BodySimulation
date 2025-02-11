@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include "constants.h"
 
+
 #define CUDA_CALL(call) do {                                 \
     cudaError_t err = call;                                  \
     if (err != cudaSuccess) {                                \
@@ -37,6 +38,7 @@ __device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 
 	return ai;	
 }
+
 
 __device__ float3 bodyInteractions_float3(float4 bi, float4 bj, float3 ai) {
 	// Compute r_ij position vector of i from j
@@ -84,7 +86,6 @@ __device__ float3 tile_interaction_float3(float4 myBody, float3 accel) {
 	}
 	return accel;
 }
-
 
 
 __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N, int tileWidthFactor) {
@@ -139,6 +140,7 @@ __global__ void kernel(float4* globalX, float4* globalA, float4* globalV, int N,
 	globalA[tid] = myNewAccel;  
 }
 
+
 __device__ void warpReduce(volatile float4* shMem, float4 accel, int sid) {
 
 	shMem[sid].x += shMem[sid + 16].x;
@@ -166,7 +168,6 @@ __device__ void warpReduce(volatile float4* shMem, float4 accel, int sid) {
 	//shMem[sid] = accel;
 
 }
-
 
 
 // Embarassingly parallel kernel version
@@ -201,11 +202,6 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 	// Wait for all threads completion
 	__syncthreads();
 
-	// Reduce and update body velocity and acceleration
-	// usign integration step
-	
-
-	
 	// Sequential Addressing Reduction
 	// 4-way bank conflict
 	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
@@ -217,67 +213,13 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 		__syncthreads();
 	}
 
-	
-	
-	
-	/*
-	// Loop unrolling, knowing that we are using block of 32 threads
-	if (tid < 16) {
-		myNewAccel.x += shMem[sid + 16].x;
-		myNewAccel.y += shMem[sid + 16].y;
-		myNewAccel.z += shMem[sid + 16].z;
-		shMem[sid] = myNewAccel;
-	}
-	__syncthreads();
-	if (tid < 8) {
-		myNewAccel.x += shMem[sid + 8].x;
-		myNewAccel.y += shMem[sid + 8].y;
-		myNewAccel.z += shMem[sid + 8].z;
-		shMem[sid] = myNewAccel;
-
-	}
-	__syncthreads();
-	if (tid < 4) {
-		myNewAccel.x += shMem[sid + 4].x;
-		myNewAccel.y += shMem[sid + 4].y;
-		myNewAccel.z += shMem[sid + 4].z;
-		shMem[sid] = myNewAccel;
-	}
-	__syncthreads();
-	if (tid < 2) {
-		myNewAccel.x += shMem[sid + 2].x;
-		myNewAccel.y += shMem[sid + 2].y;
-		myNewAccel.z += shMem[sid + 2].z;
-		shMem[sid] = myNewAccel;
-	}
-	__syncthreads();
-	if(tid < 1){
-		myNewAccel.x += shMem[sid + 1].x;
-		myNewAccel.y += shMem[sid + 1].y;
-		myNewAccel.z += shMem[sid + 1].z;
-		shMem[sid] = myNewAccel;
-	}
-
-	*/
-	
-	
-
-	
-	
-	//warpReduce(shMem, myNewAccel, sid);
-
-	
-
-	//__syncthreads();
-
 	// At this point, we have the sum of all blocks X-wise computed interactions
 	// We need now to sum all the blocks over the X-axis for each body
 	if (threadIdx.x == 0) {
 		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shMem[sid];
 	}
-	
-
 }
+
 
 // Embarassingly parallel kernel version
 __global__ void kernel_reduction_float3(float4* globalX, float3* reduceMatrix, int N) {
@@ -286,8 +228,6 @@ __global__ void kernel_reduction_float3(float4* globalX, float3* reduceMatrix, i
 	float4 otherBody;
 	float3 myNewAccel = { 0.0f, 0.0f, 0.0f};
 
-
-	//float4 reduceBody;
 	// We are working in this algorithm in an NxN grid of threads, in which every thread computes one single interaction
 	// that then will be reduced and combined row-wise with all other acceleration over the same body
 	int tidX = blockIdx.x * blockDim.x + threadIdx.x; // Defines the body with which the computation should be
@@ -310,26 +250,6 @@ __global__ void kernel_reduction_float3(float4* globalX, float3* reduceMatrix, i
 
 	// Wait for all threads completion
 	__syncthreads();
-
-	// Reduce and update body velocity and acceleration
-	// usign integration step
-
-
-	/*
-	// Sequential Addressing Reduction
-	// 4-way bank conflict (https://stackoverflow.com/questions/37167061/cuda-minimize-bank-conflict-for-large-data-type)
-	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
-		if (tid < s) {
-			shMem[sid].x += shMem[sid + s].x;
-			shMem[sid].y += shMem[sid + s].y;
-			shMem[sid].z += shMem[sid + s].z;
-		}
-		__syncthreads();
-	}
-	*/
-
-
-
 
 	// Loop unrolling, knowing that we are using block of 32 threads
 	if (tid < 16) {
@@ -362,14 +282,6 @@ __global__ void kernel_reduction_float3(float4* globalX, float3* reduceMatrix, i
 		shMem3[sid].z += shMem3[sid + 1].z;
 	}
 
-
-
-
-
-	//warpReduce(shMem, myNewAccel, sid);
-
-
-
 	__syncthreads();
 
 	// At this point, we have the sum of all blocks X-wise computed interactions
@@ -377,9 +289,8 @@ __global__ void kernel_reduction_float3(float4* globalX, float3* reduceMatrix, i
 	if (threadIdx.x == 0) {
 		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shMem3[sid];
 	}
-
-
 }
+
 
 // Embarassingly parallel kernel version with first add during load for reduction
 __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int N) {
@@ -420,7 +331,6 @@ __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int
 
 	// Loop unrolling, knowing that we are using block of 32 threads (in this case, halved)
 	// Each reduction step produces a 4-way bank conflict
-	//__syncthreads();
 	if (tid < 8) {
 		myNewAccel1x += shMem[sid + 8].x;
 		myNewAccel1y += shMem[sid + 8].y;
@@ -465,9 +375,8 @@ __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int
 	if (threadIdx.x == 0) {
 		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shMem[sid];
 	}
-
-
 }
+
 
 // Embarassingly parallel kernel version with first add during load for reduction
 __global__ void kernel_reduction_fadl4(float4* globalX, float4* reduceMatrix, int N) {
@@ -477,7 +386,6 @@ __global__ void kernel_reduction_fadl4(float4* globalX, float4* reduceMatrix, in
 	float4 myNewAccel2 = { 0.0f, 0.0f, 0.0f, 0.0f };
 	float4 myNewAccel3 = { 0.0f, 0.0f, 0.0f, 0.0f };
 	float4 myNewAccel4 = { 0.0f, 0.0f, 0.0f, 0.0f };
-
 
 	// This version of the algorithm uses half of the threads
 	int tidX = blockIdx.x * (blockDim.x * 4) + threadIdx.x; // Defines the body with which the computation should be done
@@ -494,8 +402,6 @@ __global__ void kernel_reduction_fadl4(float4* globalX, float4* reduceMatrix, in
 	myNewAccel3 = bodyInteractions(globalX[tidY], globalX[tidX + blockDim.x * 2], myNewAccel3);
 	myNewAccel4 = bodyInteractions(globalX[tidY], globalX[tidX + blockDim.x * 3], myNewAccel4);
 
-
-
 	// Compute the add operation
 	myNewAccel1.x += myNewAccel2.x + myNewAccel3.x + myNewAccel4.x;
 	myNewAccel1.y += myNewAccel2.y + myNewAccel3.y + myNewAccel4.y;
@@ -506,7 +412,6 @@ __global__ void kernel_reduction_fadl4(float4* globalX, float4* reduceMatrix, in
 
 	// Loop unrolling, knowing that we are using block of 32 threads (in this case, halved)
 	// Each reduction step produces a 4-way bank conflict
-	//__syncthreads();
 	if (tid < 8) {
 		myNewAccel1.x += shMem[sid + 8].x;
 		myNewAccel1.y += shMem[sid + 8].y;
@@ -545,8 +450,6 @@ __global__ void kernel_reduction_fadl4(float4* globalX, float4* reduceMatrix, in
 	if (threadIdx.x == 0) {
 		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shMem[sid];
 	}
-
-
 }
 
 
@@ -581,6 +484,7 @@ __global__ void inter_block_reduction(float4* globalX, float4* globalA, float4* 
 	globalV[tidY] = myNewVel;
 	globalA[tidY] = myNewAccel;
 }
+
 
 __global__ void inter_block_reduction_float3(float4* globalX, float3* globalA, float3* globalV, float3* reduceMatrix, int N, int numBlocks) {
 	int tidY = blockIdx.x * blockDim.x + threadIdx.x; // Each thread handles one body
@@ -638,33 +542,19 @@ void simulateVisual_embParallel_fadl(cudaGraphicsResource* graphic_res, float4* 
 	dim3 blockDim(threadsPerBlock/2, threadsPerBlock);
 	dim3 gridDim(blocksPerGrid/2, blocksPerGrid);
 	size_t sharedMemSize = sizeof(float4) * threadsPerBlock/2 * threadsPerBlock;
-	//printf("\BocksPerGrid: %d, ThreadsPerBlock %d", blocksPerGrid, threadsPerBlock);
 
-	//printf("\nBlockDim: %d,%d,%d\n", blockDim.x, blockDim.y, blockDim.z);
-	//printf("GridDim: %d,%d,%d\n", gridDim.x, gridDim.y, gridDim.z);
 	// Launch thread computation
 	kernel_reduction_fadl << <gridDim, blockDim, sharedMemSize >> > (d_bodies, d_reduceMatrix, N);
 	cudaDeviceSynchronize();
 	inter_block_reduction << < blocksPerGrid, threadsPerBlock >> > (d_bodies, d_accelerations, d_velocity, d_reduceMatrix, N, blocksPerGrid/2);
-	// Copy data from CUDA to OpenGL
-	//cudaMemcpy(VBO,(void*) d_bodies, size4, cudaMemcpyDeviceToDevice);
-
 
 	cudaGraphicsUnmapResources(1, &graphic_res, 0);
-
-	/*
-	err = cudaMemcpy(velocity, d_velocity, size3, cudaMemcpyDeviceToHost);
-	if (err != cudaSuccess) {
-		//printf("Memcpy DeviceToHost bodies failed: %s\n", cudaGetErrorString(err));
-	}
-	*/
-	
 }
+
 
 void simulateVisual_embParallel_fadl4(cudaGraphicsResource* graphic_res, float4* bodies, float4* d_accelerations, float4* d_velocity, float4* d_reduceMatrix, int N) {
 	size_t size4 = sizeof(float4) * N;
 	float4* d_bodies;
-
 
 	// Map openGL buffer to cuda pointer
 	cudaGraphicsMapResources(1, &graphic_res, 0);
@@ -684,34 +574,19 @@ void simulateVisual_embParallel_fadl4(cudaGraphicsResource* graphic_res, float4*
 	dim3 blockDim(threadsPerBlock / 4, threadsPerBlock);
 	dim3 gridDim(blocksPerGrid / 4, blocksPerGrid);
 	size_t sharedMemSize = sizeof(float4) * threadsPerBlock / 4 * threadsPerBlock;
-	//printf("\BocksPerGrid: %d, ThreadsPerBlock %d", blocksPerGrid, threadsPerBlock);
 
-	//printf("\nBlockDim: %d,%d,%d\n", blockDim.x, blockDim.y, blockDim.z);
-	//printf("GridDim: %d,%d,%d\n", gridDim.x, gridDim.y, gridDim.z);
 	// Launch thread computation
 	kernel_reduction_fadl << <gridDim, blockDim, sharedMemSize >> > (d_bodies, d_reduceMatrix, N);
 	cudaDeviceSynchronize();
 	inter_block_reduction << < blocksPerGrid, threadsPerBlock >> > (d_bodies, d_accelerations, d_velocity, d_reduceMatrix, N, blocksPerGrid / 4);
-	// Copy data from CUDA to OpenGL
-	//cudaMemcpy(VBO,(void*) d_bodies, size4, cudaMemcpyDeviceToDevice);
-
 
 	cudaGraphicsUnmapResources(1, &graphic_res, 0);
-
-	/*
-	err = cudaMemcpy(velocity, d_velocity, size3, cudaMemcpyDeviceToHost);
-	if (err != cudaSuccess) {
-		//printf("Memcpy DeviceToHost bodies failed: %s\n", cudaGetErrorString(err));
-	}
-	*/
-
 }
 
 void simulateVisual_embParallel(cudaGraphicsResource* graphic_res, float4* bodies, float4* d_accelerations, float4* d_velocity, float4* d_reduceMatrix, int N) {
 	size_t size4 = sizeof(float4) * N;
 	float4* d_bodies;
 
-
 	// Map openGL buffer to cuda pointer
 	cudaGraphicsMapResources(1, &graphic_res, 0);
 
@@ -730,34 +605,19 @@ void simulateVisual_embParallel(cudaGraphicsResource* graphic_res, float4* bodie
 	dim3 blockDim(threadsPerBlock, threadsPerBlock);
 	dim3 gridDim(blocksPerGrid, blocksPerGrid);
 	size_t sharedMemSize = sizeof(float4) * threadsPerBlock * threadsPerBlock;
-	//printf("\BocksPerGrid: %d, ThreadsPerBlock %d", blocksPerGrid, threadsPerBlock);
 
-	//printf("\nBlockDim: %d,%d,%d\n", blockDim.x, blockDim.y, blockDim.z);
-	//printf("GridDim: %d,%d,%d\n", gridDim.x, gridDim.y, gridDim.z);
 	// Launch thread computation
 	kernel_reduction << <gridDim, blockDim, sharedMemSize >> > (d_bodies, d_reduceMatrix, N);
 	cudaDeviceSynchronize();
 	inter_block_reduction << < blocksPerGrid, threadsPerBlock >> > (d_bodies, d_accelerations, d_velocity, d_reduceMatrix, N, blocksPerGrid);
-	// Copy data from CUDA to OpenGL
-	//cudaMemcpy(VBO,(void*) d_bodies, size4, cudaMemcpyDeviceToDevice);
-
 
 	cudaGraphicsUnmapResources(1, &graphic_res, 0);
-
-	/*
-	err = cudaMemcpy(velocity, d_velocity, size3, cudaMemcpyDeviceToHost);
-	if (err != cudaSuccess) {
-		//printf("Memcpy DeviceToHost bodies failed: %s\n", cudaGetErrorString(err));
-	}
-	*/
-
 }
 
 void simulateVisual_embParallel_float3(cudaGraphicsResource* graphic_res, float4* bodies, float3* d_accelerations, float3* d_velocity, float3* d_reduceMatrix, int N) {
 	size_t size4 = sizeof(float4) * N;
 	float4* d_bodies;
 
-
 	// Map openGL buffer to cuda pointer
 	cudaGraphicsMapResources(1, &graphic_res, 0);
 
@@ -776,27 +636,13 @@ void simulateVisual_embParallel_float3(cudaGraphicsResource* graphic_res, float4
 	dim3 blockDim(threadsPerBlock, threadsPerBlock);
 	dim3 gridDim(blocksPerGrid, blocksPerGrid);
 	size_t sharedMemSize = sizeof(float4) * threadsPerBlock * threadsPerBlock;
-	//printf("\BocksPerGrid: %d, ThreadsPerBlock %d", blocksPerGrid, threadsPerBlock);
 
-	//printf("\nBlockDim: %d,%d,%d\n", blockDim.x, blockDim.y, blockDim.z);
-	//printf("GridDim: %d,%d,%d\n", gridDim.x, gridDim.y, gridDim.z);
 	// Launch thread computation
 	kernel_reduction_float3 << <gridDim, blockDim, sharedMemSize >> > (d_bodies, d_reduceMatrix, N);
 	cudaDeviceSynchronize();
 	inter_block_reduction_float3 << < blocksPerGrid, threadsPerBlock >> > (d_bodies, d_accelerations, d_velocity, d_reduceMatrix, N, blocksPerGrid);
-	// Copy data from CUDA to OpenGL
-	//cudaMemcpy(VBO,(void*) d_bodies, size4, cudaMemcpyDeviceToDevice);
-
 
 	cudaGraphicsUnmapResources(1, &graphic_res, 0);
-
-	/*
-	err = cudaMemcpy(velocity, d_velocity, size3, cudaMemcpyDeviceToHost);
-	if (err != cudaSuccess) {
-		//printf("Memcpy DeviceToHost bodies failed: %s\n", cudaGetErrorString(err));
-	}
-	*/
-
 }
 
 
@@ -827,14 +673,6 @@ void simulateVisual(cudaGraphicsResource* graphic_res, float4* bodies, float4* d
 	cudaDeviceSynchronize();
 
 	cudaGraphicsUnmapResources(1, &graphic_res, 0);
-
-	/*
-	err = cudaMemcpy(velocity, d_velocity, size3, cudaMemcpyDeviceToHost);
-	if (err != cudaSuccess) {
-		//printf("Memcpy DeviceToHost bodies failed: %s\n", cudaGetErrorString(err));
-	}
-	*/
-
 }
 
 void simulate(float4* d_bodies, float4* d_accelerations, float4* d_velocity, int N) {
