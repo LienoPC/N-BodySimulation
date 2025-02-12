@@ -6,17 +6,6 @@
 #include "constants.h"
 
 
-#define CUDA_CALL(call) do {                                 \
-    cudaError_t err = call;                                  \
-    if (err != cudaSuccess) {                                \
-        fprintf(stderr, "CUDA error in %s (%s:%d): %s\n",    \
-                #call, __FILE__, __LINE__, cudaGetErrorString(err)); \
-        exit(EXIT_FAILURE);                                  \
-    }                                                        \
-} while (0)
-#define __DEBUG__ 1
-
-
 __device__ float4 bodyInteractions(float4 bi, float4 bj, float4 ai) {
 	// Compute r_ij position vector of i from j
 	float3 r_ij;

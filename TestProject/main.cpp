@@ -356,7 +356,6 @@ int main(void) {
 		simulationLoopNoVisual(d_bodies, d_accelerations, d_velocity, steps);
 
 		cudaFree(d_bodies);
-	
 	}
 
 	cudaFree(d_velocity);
