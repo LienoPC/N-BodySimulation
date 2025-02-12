@@ -159,7 +159,7 @@ __device__ void warpReduce(volatile float4* shMem, float4 accel, int sid) {
 }
 
 
-// Embarassingly parallel kernel version
+// Reduction kernel version
 __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 	extern __shared__  __align__(16) float4 shMem[];
 	float4 baseBody; // Position (x, y, z) and weight (w)
@@ -191,8 +191,8 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 	// Wait for all threads completion
 	__syncthreads();
 
+	/*
 	// Sequential Addressing Reduction
-	// 4-way bank conflict
 	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
 		if (tid < s) {
 			shMem[sid].x += shMem[sid + s].x;
@@ -201,6 +201,42 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 		}
 		__syncthreads();
 	}
+	*/
+	
+
+	// Loop unrolling, knowing that we are using block of 32 threads
+	if (tid < 16) {
+		shMem[sid].x += shMem[sid + 16].x;
+		shMem[sid].y += shMem[sid + 16].y;
+		shMem[sid].z += shMem[sid + 16].z;
+	}
+	__syncthreads();
+	if (tid < 8) {
+		shMem[sid].x += shMem[sid + 8].x;
+		shMem[sid].y += shMem[sid + 8].y;
+		shMem[sid].z += shMem[sid + 8].z;
+	}
+	__syncthreads();
+	if (tid < 4) {
+		shMem[sid].x += shMem[sid + 4].x;
+		shMem[sid].y += shMem[sid + 4].y;
+		shMem[sid].z += shMem[sid + 4].z;
+	}
+	__syncthreads();
+	if (tid < 2) {
+		shMem[sid].x += shMem[sid + 2].x;
+		shMem[sid].y += shMem[sid + 2].y;
+		shMem[sid].z += shMem[sid + 2].z;
+	}
+	__syncthreads();
+	if (tid < 1) {
+		shMem[sid].x += shMem[sid + 1].x;
+		shMem[sid].y += shMem[sid + 1].y;
+		shMem[sid].z += shMem[sid + 1].z;
+	}
+
+	__syncthreads();
+
 
 	// At this point, we have the sum of all blocks X-wise computed interactions
 	// We need now to sum all the blocks over the X-axis for each body
@@ -210,7 +246,7 @@ __global__ void kernel_reduction(float4* globalX, float4* reduceMatrix, int N) {
 }
 
 
-// Embarassingly parallel kernel version
+// Reduction kernel version with float3
 __global__ void kernel_reduction_float3(float4* globalX, float3* reduceMatrix, int N) {
 	extern __shared__  float3 shMem3[];
 	float4 baseBody; // Position (x, y, z) and weight (w)
@@ -281,7 +317,7 @@ __global__ void kernel_reduction_float3(float4* globalX, float3* reduceMatrix, i
 }
 
 
-// Embarassingly parallel kernel version with first add during load for reduction
+// Reduction kernel version with first add during load for reduction
 __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int N) {
 	extern __shared__  __align__(16) float4 shMem[];
 	//float4 baseBody; // Position (x, y, z) and weight (w)
@@ -319,7 +355,6 @@ __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int
 	__syncthreads();
 
 	// Loop unrolling, knowing that we are using block of 32 threads (in this case, halved)
-	// Each reduction step produces a 4-way bank conflict
 	if (tid < 8) {
 		myNewAccel1x += shMem[sid + 8].x;
 		myNewAccel1y += shMem[sid + 8].y;
@@ -366,80 +401,6 @@ __global__ void kernel_reduction_fadl(float4* globalX, float4* reduceMatrix, int
 	}
 }
 
-
-// Embarassingly parallel kernel version with first add during load for reduction
-__global__ void kernel_reduction_fadl4(float4* globalX, float4* reduceMatrix, int N) {
-	extern __shared__  __align__(16) float4 shMem[];
-
-	float4 myNewAccel1 = { 0.0f, 0.0f, 0.0f, 0.0f };
-	float4 myNewAccel2 = { 0.0f, 0.0f, 0.0f, 0.0f };
-	float4 myNewAccel3 = { 0.0f, 0.0f, 0.0f, 0.0f };
-	float4 myNewAccel4 = { 0.0f, 0.0f, 0.0f, 0.0f };
-
-	// This version of the algorithm uses half of the threads
-	int tidX = blockIdx.x * (blockDim.x * 4) + threadIdx.x; // Defines the body with which the computation should be done
-	int tidY = blockIdx.y * blockDim.y + threadIdx.y; // Defines the effective body for which we are computing the interacion and over which will be executed the reduction
-	// Shared memory id
-	int sid = threadIdx.y * blockDim.x + threadIdx.x;
-	int tid = threadIdx.x;
-	if (tidX >= N || tidY >= N) {
-
-		return;
-	}
-	myNewAccel1 = bodyInteractions(globalX[tidY], globalX[tidX], myNewAccel1);
-	myNewAccel2 = bodyInteractions(globalX[tidY], globalX[tidX + blockDim.x], myNewAccel2);
-	myNewAccel3 = bodyInteractions(globalX[tidY], globalX[tidX + blockDim.x * 2], myNewAccel3);
-	myNewAccel4 = bodyInteractions(globalX[tidY], globalX[tidX + blockDim.x * 3], myNewAccel4);
-
-	// Compute the add operation
-	myNewAccel1.x += myNewAccel2.x + myNewAccel3.x + myNewAccel4.x;
-	myNewAccel1.y += myNewAccel2.y + myNewAccel3.y + myNewAccel4.y;
-	myNewAccel1.z += myNewAccel2.z + myNewAccel3.z + myNewAccel4.z;
-	shMem[sid] = myNewAccel1;
-	// Wait for all threads completion
-	__syncthreads();
-
-	// Loop unrolling, knowing that we are using block of 32 threads (in this case, halved)
-	// Each reduction step produces a 4-way bank conflict
-	if (tid < 8) {
-		myNewAccel1.x += shMem[sid + 8].x;
-		myNewAccel1.y += shMem[sid + 8].y;
-		myNewAccel1.z += shMem[sid + 8].z;
-		shMem[sid] = myNewAccel1;
-	}
-
-	__syncthreads();
-	if (tid < 4) {
-		myNewAccel1.x += shMem[sid + 4].x;
-		myNewAccel1.y += shMem[sid + 4].y;
-		myNewAccel1.z += shMem[sid + 4].z;
-		shMem[sid] = myNewAccel1;
-	}
-
-	__syncthreads();
-	if (tid < 2) {
-		myNewAccel1.x += shMem[sid + 2].x;
-		myNewAccel1.y += shMem[sid + 2].y;
-		myNewAccel1.z += shMem[sid + 2].z;
-		shMem[sid] = myNewAccel1;
-	}
-
-	__syncthreads();
-	if (tid < 1) {
-		myNewAccel1.x += shMem[sid + 1].x;
-		myNewAccel1.y += shMem[sid + 1].y;
-		myNewAccel1.z += shMem[sid + 1].z;
-		shMem[sid] = myNewAccel1;
-	}
-
-	__syncthreads();
-
-	// At this point, we have the sum of all blocks X-wise computed interactions
-	// We need now to sum all the blocks over the X-axis for each body
-	if (threadIdx.x == 0) {
-		reduceMatrix[tidY * gridDim.x + blockIdx.x] = shMem[sid];
-	}
-}
 
 
 __global__ void inter_block_reduction(float4* globalX, float4* globalA, float4* globalV, float4* reduceMatrix, int N, int numBlocks) {
