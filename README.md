@@ -15,5 +15,5 @@ This repository contains an implementation of an N-Body System simulation using 
 - **Benchmark Suite:** Scripts and data for performance comparison between naive and optimized implementations.
 
 ## Team
-[Alberto Cagnazzo](https://github.com/LienoPC)
-[Giulio Arecco](https://github.com/giulio-arecco)
+- [Alberto Cagnazzo](https://github.com/LienoPC)
+- [Giulio Arecco](https://github.com/giulio-arecco)
