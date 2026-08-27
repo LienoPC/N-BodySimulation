@@ -14,6 +14,9 @@ This repository contains an implementation of an N-Body System simulation using 
 - **Visualization Support:** Optional integration with OpenGL/GLFW for real-time rendering.
 - **Benchmark Suite:** Scripts and data for performance comparison between naive and optimized implementations.
 
+## Demo
+https://github.com/user-attachments/assets/5e206509-ab31-4270-a10e-81bbe2ffd3f0
+
 ## Team
 - [Alberto Cagnazzo](https://github.com/LienoPC)
 - [Giulio Arecco](https://github.com/giulio-arecco)
