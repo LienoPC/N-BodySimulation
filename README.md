@@ -20,3 +20,10 @@ https://github.com/user-attachments/assets/5e206509-ab31-4270-a10e-81bbe2ffd3f0
 ## Team
 - [Alberto Cagnazzo](https://github.com/LienoPC)
 - [Giulio Arecco](https://github.com/giulio-arecco)
+
+## License
+
+The original code in this repository is licensed under the MIT License. 
+
+**Third-Party Code:** 
+This repository includes third-party libraries. These files remain licensed under their respective original terms and retain their original copyright notices.
