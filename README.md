@@ -98,15 +98,15 @@ Numerical updates are propagated across discrete time increments $\Delta t$ (`DT
 
 1. Velocity half-step increment:
 
-   $$
-   \mathbf{v}_i\left(t + \frac{1}{2}\Delta t\right) = \mathbf{v}_i(t) + \frac{1}{2} \mathbf{a}_i(t) \Delta t
-   $$
+$$
+\mathbf{v}_i\left(t + \frac{1}{2}\Delta t\right) = \mathbf{v}_i(t) + \frac{1}{2} \mathbf{a}_i(t) \Delta t
+$$
 
 2. Position full-step update:
 
-   $$
-   \mathbf{x}_i(t + \Delta t) = \mathbf{x}_i(t) + \mathbf{v}_i\left(t + \frac{1}{2}\Delta t\right) \Delta t
-   $$
+$$
+\mathbf{x}_i(t + \Delta t) = \mathbf{x}_i(t) + \mathbf{v}_i\left(t + \frac{1}{2}\Delta t\right) \Delta t
+$$
 
 In each iteration, the net gravitational acceleration $\mathbf{a}_i(t)$ is evaluated from current particle coordinates $\mathbf{x}(t)$. The velocity register is updated by half-step kick $\frac{1}{2}\mathbf{a}_i(t)\Delta t$, and the position vector $\mathbf{x}_i$ is subsequently advanced by displacement $\mathbf{v}_i\left(t + \frac{1}{2}\Delta t\right)\Delta t$. The velocity buffer retains this intermediate state $\mathbf{v}_i\left(t + \frac{1}{2}\Delta t\right)$ across consecutive kernel launches, maintaining numerical stability and bounding energy drift over long integration runs.
 
@@ -541,15 +541,15 @@ void main() {
 The shader executes two affine transformations:
 - **Spatial Normalization:** Linearly maps physical simulation coordinates $(x, y, z) \in [-X_{\max}, X_{\max}] \times [-Y_{\max}, Y_{\max}] \times [-Z_{\max}, Z_{\max}]$ into Normalized Device Coordinates:
 
-  $$
-  x_{\text{NDC}} = \frac{x}{X_{\max}}, \quad y_{\text{NDC}} = \frac{y}{Y_{\max}}, \quad z_{\text{NDC}} = \frac{z}{Z_{\max}}, \quad \mathbf{p}_{\text{NDC}} \in [-1.0, 1.0]^3
-  $$
+$$
+x_{\text{NDC}} = \frac{x}{X_{\max}}, \quad y_{\text{NDC}} = \frac{y}{Y_{\max}}, \quad z_{\text{NDC}} = \frac{z}{Z_{\max}}, \quad \mathbf{p}_{\text{NDC}} \in [-1.0, 1.0]^3
+$$
 
 - **Mass Scalar Mapping:** Normalizes particle mass $m \in [m_{\min}, m_{\max}]$ to scalar $w \in [0.0, 1.0]$:
 
-  $$
-  w = \frac{m - m_{\min}}{m_{\max} - m_{\min}}
-  $$
+$$
+w = \frac{m - m_{\min}}{m_{\max} - m_{\min}}
+$$
 
 #### Fragment Shader (`fragmentShaderSource`) <!-- omit in toc -->
 The fragment shader evaluates linear interpolation (`mix`) across a two-color gradient:
@@ -558,7 +558,11 @@ $$
 \mathbf{C}(w) = (1 - w)\,\mathbf{C}_{\text{low}} + w\,\mathbf{C}_{\text{high}}
 $$
 
-where $\mathbf{C}_{\text{low}} = (0.0, 1.0, 0.0)^T$ (green) and $\mathbf{C}_{\text{high}} = (1.0, 0.0, 0.0)^T$ (red):
+where:
+
+$$
+\mathbf{C}_{\text{low}} = (0.0, 1.0, 0.0)^T \quad (\text{green}) \quad \text{and} \quad \mathbf{C}_{\text{high}} = (1.0, 0.0, 0.0)^T \quad (\text{red})
+$$
 
 ```glsl
 #version 330 core
@@ -627,21 +631,21 @@ Floating-point operations on CUDA GPUs utilize fused multiply-add (FMA) instruct
 
 - **`verify_still_bodies`:** Evaluates an adaptive relative tolerance threshold scaled to 1% of particle magnitude across each spatial dimension:
 
-  $$
-  \text{tolerance}_{i, k} = 0.01 \cdot \min\left(\left|u_{i, k}^{\text{GPU}}\right|, \left|u_{i, k}^{\text{CPU}}\right|\right), \quad k \in \{x, y, z\}
-  $$
+$$
+\text{tolerance}_{i, k} = 0.01 \cdot \min\left(\left|u_{i, k}^{\text{GPU}}\right|, \left|u_{i, k}^{\text{CPU}}\right|\right), \quad k \in \{x, y, z\}
+$$
 
   A diagnostic message is logged to standard output if:
 
-  $$
-  \left|u_{i, k}^{\text{GPU}} - u_{i, k}^{\text{CPU}}\right| > \text{tolerance}_{i, k}
-  $$
+$$
+\left|u_{i, k}^{\text{GPU}} - u_{i, k}^{\text{CPU}}\right| > \text{tolerance}_{i, k}
+$$
 
 - **`verify_equality4` / `verify_equality3`:** Enforces an absolute tolerance threshold of $\delta = 0.01$ across all vector components:
 
-  $$
-  \left|u_{i, k}^{\text{GPU}} - u_{i, k}^{\text{CPU}}\right| \le 0.01, \quad \forall k \in \{x, y, z, w\}
-  $$
+$$
+\left|u_{i, k}^{\text{GPU}} - u_{i, k}^{\text{CPU}}\right| \le 0.01, \quad \forall k \in \{x, y, z, w\}
+$$
 
 ---
 
